@@ -3,6 +3,29 @@
 Dated record of research and development activity. Each entry documents
 concrete progress on the ASSIS platform. (Newest first.)
 
+## 2026-08-10 — First model training completed: mAP50 = 0.933
+
+- Dataset: PPE-Detection (Roboflow Universe), 5 classes (boots, gloves,
+  helmet, human, vest), 1,566 training images, 420 validation images
+- Training: YOLOv8n, 50 epochs, Google Colab T4 GPU
+- Results:
+  - mAP50: 0.933 (exceeds MVP target of ≥ 0.85)
+  - mAP50-95: 0.728
+  - Precision: 0.924
+  - Recall: 0.893
+- Per-class mAP50: vest 0.976, helmet 0.984, human 0.957, boots 0.933,
+  gloves 0.769
+- Tested inference on sample imagery; confirmed working detection pipeline
+- Trained weights (best.pt) downloaded and added to repo
+- Limitation observed: gloves class shows lower accuracy (0.769) than
+  other classes — likely due to smaller object size and dataset
+  representation; noted as a target for improvement in Phase 1.5
+- Next: test on aviation/ramp-context imagery to evaluate cross-domain
+  transfer; update compliance-scoring logic for full 5-class output;
+  populate white paper Results section with these metrics
+
+---
+
 ## 2026-08-09 — Repository published and organized on GitHub
 
 - Created public GitHub repository: github.com/sundevilaviator/ASSIS-PPE-Detection
