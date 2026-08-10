@@ -3,6 +3,14 @@
 Dated record of research and development activity. Each entry documents
 concrete progress on the ASSIS platform. (Newest first.)
 
+## 2026-08-09 — Repository published and organized on GitHub
+
+- Created public GitHub repository: github.com/sundevilaviator/ASSIS-PPE-Detection
+- Uploaded full Phase 1 codebase and reorganized into proper folder structure
+  (app/, src/, docs/, notebooks/)
+- 14 commits reflecting iterative setup and corrections
+- Next: dataset selection (Roboflow) and first model training run
+
 ---
 
 ## 2026-08-08 — Repository established; Phase 1 MVP scaffolded
