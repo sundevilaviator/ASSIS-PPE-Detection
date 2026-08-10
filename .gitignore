@@ -1,0 +1,17 @@
+data/*
+!data/.gitkeep
+models/*
+!models/.gitkeep
+*.pt
+*.onnx
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+runs/
+wandb/
+.DS_Store
+.idea/
+.vscode/
+*.log
