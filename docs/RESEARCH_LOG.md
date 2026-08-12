@@ -3,6 +3,23 @@
 Dated record of research and development activity. Each entry documents
 concrete progress on the ASSIS platform. (Newest first.)
 
+## 2026-08-12 — 3-class retrain, dual-model violation detection, cross-domain validation
+
+- Simplified dataset from 5 classes to 3: removed `boots` and `human`
+- Retrained YOLOv8n (3 classes: gloves, helmet, vest), 50 epochs, Colab Pro T4 GPU
+- Results: mAP50 0.922, mAP50-95 0.725, Precision 0.922, Recall 0.864
+- Per-class mAP50: vest 0.985, helmet 0.978, gloves 0.804
+- Implemented dual-model violation detection (src/utils.py): correlates
+  person detections with PPE detections via bounding-box overlap for true
+  per-person compliance scoring
+- Cross-domain validation: tested on two real aviation ramp photographs
+  (never seen in training). Both correctly detected vest presence
+  (confidence 0.92 and 0.80) despite training on non-aviation imagery only
+- License updated to AGPL-3.0; added NOTICE.md, CITATION.cff, CLA
+- Next: Phase 2 (FOD detection) dataset scoping
+
+---
+
 ## 2026-08-10 — First model training completed: mAP50 = 0.933
 
 - Dataset: PPE-Detection (Roboflow Universe), 5 classes (boots, gloves,
