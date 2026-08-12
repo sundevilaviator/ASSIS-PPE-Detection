@@ -13,8 +13,9 @@ security intelligence platform for U.S. airports. This repository contains
 vest compliance in airport ramp and airside environments.
 
 **Detection classes (v1):**
-- `vest` — person wearing a high-visibility vest
-- `no-vest` — person NOT wearing a high-visibility vest (violation)
+- gloves, helmet, vest — with dual-model
+- person-PPE correlation for true per-person violation detection
+(not simple item presence). See src/utils.py for the correlation logic.
 
 This module is the foundation for the broader ASSIS roadmap: FOD detection,
 slip/trip/fall identification, badge-misuse alerting, and SIDA-area anomaly
