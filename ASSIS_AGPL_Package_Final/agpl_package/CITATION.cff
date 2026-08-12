@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use this software or reference this research, please cite it as below."
+title: "ASSIS: AI-Integrated Airport Safety and Security Intelligence System — Phase 1 (PPE Compliance Detection)"
+authors:
+  - family-names: "Usman"
+    given-names: "Sana"
+    affiliation: "Arizona State University"
+version: "1.0.0"
+date-released: 2026-08-12
+url: "https://github.com/sundevilaviator/ASSIS-PPE-Detection"
+license: AGPL-3.0
+repository-code: "https://github.com/sundevilaviator/ASSIS-PPE-Detection"
+abstract: >
+  ASSIS Phase 1 is a computer-vision platform for automated Personal
+  Protective Equipment (PPE) compliance detection at airport ramp
+  environments, built on YOLOv8 with a dual-model person-PPE correlation
+  architecture for true per-person violation detection. Trained via
+  transfer learning from construction-industry imagery and validated on
+  real aviation ramp photography.
+keywords:
+  - computer vision
+  - aviation safety
+  - YOLOv8
+  - transfer learning
+  - PPE detection
+  - airport safety management systems
