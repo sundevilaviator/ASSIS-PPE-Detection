@@ -106,12 +106,14 @@ See `docs/PROJECT_ROADMAP.md` and `docs/RESEARCH_LOG.md`.
 
 ## Author & Context
 
-Developed as independent research in aviation safety technology, informed by
-operational experience at Denver International Airport (DEN), Dallas Love
-Field (DAL), and Charleston International Airport (CHS), and research
-engagement with TRB ACRP Project 04-26 (Safety Management Systems for Small
-and Non-Hub Airports).
+Developed as independent research in aviation safety technology, informed
+by operational experience at Denver International Airport (DEN), Dallas
+Love Field (DAL), and Charleston International Airport (CHS).
 
 ## License
 
-MIT — free to use, modify, and distribute with attribution.
+## License
+
+AGPL-3.0 — free to use and modify; any network-deployed or distributed
+modifications must also be released under AGPL-3.0. See `LICENSE` and
+`NOTICE.md` for full details.
