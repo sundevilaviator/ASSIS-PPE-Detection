@@ -27,21 +27,24 @@ st.set_page_config(page_title="ASSIS - PPE Compliance Demo", page_icon="🦺", l
 
 @st.cache_resource
 def load_models():
-    from ultralytics import YOLO
     import torch
 
-    # Allow loading of legacy-style YOLO checkpoints under newer torch's
-    # stricter default (weights_only=True) security behavior
-    torch.serialization.add_safe_globals([
-        __import__('ultralytics.nn.tasks', fromlist=['DetectionModel']).DetectionModel
-    ])
+    # Patch torch.load to default to weights_only=False for this session.
+    # Safe here because we are loading our own trained model file, not an
+    # untrusted third-party checkpoint.
+    _original_load = torch.load
+    def _patched_load(*args, **kwargs):
+        kwargs.setdefault("weights_only", False)
+        return _original_load(*args, **kwargs)
+    torch.load = _patched_load
+
+    from ultralytics import YOLO
 
     base_model = YOLO(BASE_WEIGHTS)
     if FINE_TUNED_WEIGHTS.exists():
         ppe_model = YOLO(str(FINE_TUNED_WEIGHTS))
         return base_model, ppe_model, True
     return base_model, None, False
-
 
 def main() -> None:
     st.title("🦺 ASSIS - PPE Compliance Detection")
