@@ -1,5 +1,5 @@
 """
-ASSIS PPE Detection — interactive demo.
+ASSIS PPE Detection - interactive demo (v2, dual-model violation detection).
 
 Run with:
     streamlit run app/streamlit_app.py
@@ -19,44 +19,45 @@ sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from utils import summarize_results  # noqa: E402
 
-WEIGHTS_PATH = REPO_ROOT / "models" / "best.pt"
-FALLBACK_WEIGHTS = "yolov8n.pt"
+FINE_TUNED_WEIGHTS = REPO_ROOT / "models" / "best.pt"
+BASE_WEIGHTS = "yolov8n.pt"
 
-st.set_page_config(page_title="ASSIS — PPE Compliance Demo", page_icon="🦺", layout="wide")
+st.set_page_config(page_title="ASSIS - PPE Compliance Demo", page_icon="🦺", layout="wide")
 
 
 @st.cache_resource
-def load_model():
+def load_models():
     from ultralytics import YOLO
-
-    if WEIGHTS_PATH.exists():
-        return YOLO(str(WEIGHTS_PATH)), True
-    return YOLO(FALLBACK_WEIGHTS), False
+    base_model = YOLO(BASE_WEIGHTS)
+    if FINE_TUNED_WEIGHTS.exists():
+        ppe_model = YOLO(str(FINE_TUNED_WEIGHTS))
+        return base_model, ppe_model, True
+    return base_model, None, False
 
 
 def main() -> None:
-    st.title("🦺 ASSIS — PPE Compliance Detection")
+    st.title("🦺 ASSIS - PPE Compliance Detection")
     st.caption(
         "AI-Integrated Airport Safety & Security Intelligence System · "
-        "Phase 1 MVP · Research demonstration only — not a regulatory tool"
+        "Phase 1 MVP · Dual-model person + PPE correlation"
     )
 
-    model, is_trained = load_model()
+    base_model, ppe_model, is_trained = load_models()
 
     if not is_trained:
-        st.warning(
-            "No trained PPE weights at `models/best.pt` — running base YOLOv8 "
-            "(detects people, not vests). Train via the Colab notebook first."
-        )
+        st.warning("No trained PPE weights at `models/best.pt`.")
+        return
 
     with st.sidebar:
         st.header("Settings")
         conf = st.slider("Confidence threshold", 0.1, 0.9, 0.4, 0.05)
         st.markdown("---")
         st.markdown(
-            "**About**\n\nDetects high-visibility vest compliance in airport "
-            "ramp environments. First module of the ASSIS research platform, "
-            "aligned with FAA Part 139 SMS and TSA Part 1542 frameworks."
+            "**How this works**\n\n"
+            "Every uploaded image is run through two models: a person "
+            "detector and a fine-tuned PPE detector. The app checks "
+            "whether each detected person overlaps with a vest detection "
+            "- if not, that person is flagged as a violation."
         )
 
     uploaded = st.file_uploader("Upload a ramp / worksite photo", type=["jpg", "jpeg", "png"])
@@ -66,45 +67,53 @@ def main() -> None:
         return
 
     image = Image.open(uploaded).convert("RGB")
+    image_np = np.array(image)
 
-    with st.spinner("Running detection..."):
-        results = model(np.array(image), conf=conf)[0]
+    with st.spinner("Running person detection + PPE detection..."):
+        person_results = base_model(image_np, conf=conf, classes=[0])[0]
+        ppe_results = ppe_model(image_np, conf=conf)[0]
 
-    annotated = results.plot()[:, :, ::-1]  # BGR -> RGB
+    ppe_annotated = ppe_results.plot()[:, :, ::-1]
 
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("Original")
         st.image(image, use_container_width=True)
     with col2:
-        st.subheader("Detections")
-        st.image(annotated, use_container_width=True)
+        st.subheader("PPE Detections")
+        st.image(ppe_annotated, use_container_width=True)
 
-    if is_trained:
-        summary = summarize_results(results)
+    summary = summarize_results(person_results, ppe_results)
 
-        st.markdown("---")
-        st.subheader("Compliance Summary")
+    st.markdown("---")
+    st.subheader("Compliance Summary")
 
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Personnel Detected", summary.total_people)
-        m2.metric("Compliant (Vest)", summary.compliant)
-        m3.metric("Violations", summary.violations)
-        m4.metric("Compliance Rate", f"{summary.compliance_rate}%")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Personnel Detected", summary.total_people)
+    m2.metric("Vest Compliant", summary.vest_compliant)
+    m3.metric("Violations", summary.violations)
+    m4.metric("Compliance Rate", f"{summary.compliance_rate}%")
 
-        if summary.violations > 0:
-            st.error(f"⚠️ {summary.status}")
-        elif summary.total_people > 0:
-            st.success(f"✅ {summary.status}")
-        else:
-            st.info(summary.status)
-
-        if summary.detections:
-            with st.expander("Detection details"):
-                st.dataframe(summary.detections, use_container_width=True)
+    if summary.violations > 0:
+        st.error(summary.status)
+    elif summary.total_people > 0:
+        st.success(summary.status)
     else:
-        st.markdown("---")
-        st.info("Showing base-model detections only. Train the PPE model to unlock compliance metrics.")
+        st.info(summary.status)
+
+    if summary.raw_ppe_counts:
+        with st.expander("Raw PPE item detections"):
+            st.write(summary.raw_ppe_counts)
+
+    if summary.people:
+        with st.expander("Per-person compliance detail"):
+            for i, person in enumerate(summary.people, 1):
+                st.write(
+                    f"Person {i} (conf {person.confidence}): "
+                    f"vest={'YES' if person.has_vest else 'NO'}  "
+                    f"helmet={'YES' if person.has_helmet else 'NO'}  "
+                    f"gloves={'YES' if person.has_gloves else 'NO'}"
+                )
 
 
 if __name__ == "__main__":
