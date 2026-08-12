@@ -13,9 +13,9 @@ security intelligence platform for U.S. airports. This repository contains
 vest compliance in airport ramp and airside environments.
 
 **Detection classes (v1):**
-- gloves, helmet, vest — with dual-model
-- person-PPE correlation for true per-person violation detection
-(not simple item presence). See src/utils.py for the correlation logic.
+Detection classes (v1): gloves, helmet, vest — with dual-model person-PPE
+correlation for true per-person violation detection (not simple item
+presence). See `src/utils.py` for the correlation logic.
 
 This module is the foundation for the broader ASSIS roadmap: FOD detection,
 slip/trip/fall identification, badge-misuse alerting, and SIDA-area anomaly
@@ -29,21 +29,21 @@ detection — aligned with FAA Part 139 Safety Management Systems and TSA Part
   estimates place ground-damage costs in the billions annually
 - PPE compliance monitoring today is manual, intermittent, and reactive
 - Small and non-hub airports lack resources for commercial safety-analytics
-  platforms — a gap identified in ACRP research on SMS implementation
+  platforms
 
 ## Project Structure
 
 ```
 ASSIS-PPE-Detection/
 ├── README.md
-├── LICENSE                    ← MIT
+├── LICENSE                    ← AGPL-3.0
 ├── requirements.txt
 ├── notebooks/
 │   └── ASSIS_PPE_Training_Colab.ipynb   ← Train the model (Google Colab)
 ├── src/
-│   ├── train.py               ← Training script
-│   ├── detect.py              ← CLI detection on images/video
-│   └── utils.py               ← Compliance scoring logic
+│   ├── train.py                    ← Training script
+│   ├── detect.py                   ← CLI detection on images/video
+│   └── utils.py                    ← Dual-model compliance scoring logic
 ├── app/
 │   └── streamlit_app.py       ← Interactive demo web app
 ├── docs/
@@ -98,7 +98,7 @@ operational CCTV or SSI material is used in this repository.
 
 ## Roadmap
 
-- **Phase 1 (this repo):** PPE vest detection
+- **Phase 1 (this repo):** PPE detection (gloves, helmet, vest)
 - **Phase 2:** FOD detection on aprons/taxiways
 - **Phase 3:** Slip/trip/fall pose estimation
 - **Phase 4:** Multi-module integration + SMS data pipeline
