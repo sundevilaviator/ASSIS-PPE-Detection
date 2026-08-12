@@ -1,6 +1,6 @@
 # ASSIS: AI-Integrated Airport Safety and Security Intelligence System — Phase 1 (PPE Compliance Detection)
 
-![Workflow Diagram](https://github.com/sundevilaviator/ASSIS-PPE-Detection/raw/main/workflow.png)
+<img width="2141" height="1242" alt="workflow" src="https://github.com/user-attachments/assets/b0305f5b-c2d7-430b-9fd0-337e6a032fe9" />
 
 ---
 
