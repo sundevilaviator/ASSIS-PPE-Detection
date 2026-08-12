@@ -112,8 +112,6 @@ Love Field (DAL), and Charleston International Airport (CHS).
 
 ## License
 
-## License
-
 AGPL-3.0 — free to use and modify; any network-deployed or distributed
 modifications must also be released under AGPL-3.0. See `LICENSE` and
 `NOTICE.md` for full details.
