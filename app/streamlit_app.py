@@ -24,7 +24,10 @@ from conditions import fetch_metar, determine_requirements, is_valid_icao  # noq
 FINE_TUNED_WEIGHTS = REPO_ROOT / "models" / "best.pt"
 BASE_WEIGHTS = "yolov8n.pt"
 
-st.set_page_config(page_title="ASSIS PPE // Briefing", page_icon="✈", layout="wide")
+st.set_page_config(page_title="ASSIS — RampGuard", page_icon="✈", layout="wide")
+
+if "theme" not in st.session_state:
+    st.session_state.theme = "light"
 
 # ---------------------------------------------------------------------------
 # Design system.
@@ -40,143 +43,142 @@ st.set_page_config(page_title="ASSIS PPE // Briefing", page_icon="✈", layout="
 # hairlines evoking chart lines, and the layout is organized as a briefing
 # strip rather than a card grid.
 # ---------------------------------------------------------------------------
-CUSTOM_CSS = """
+def render_css(theme: str) -> str:
+    """Light theme by default (BLADE-inspired: white, generous whitespace,
+    bold sans headline, thin gray card borders, one blue accent), with a
+    dark variant toggled from the sidebar. See docs/UI_UX_BLUEPRINT.md."""
+    if theme == "dark":
+        tokens = {
+            "bg": "#0B132B", "panel": "#1C2541", "line": "#2E3A63",
+            "text": "#F4F6F9", "dim": "#8D99AE", "accent": "#2F6FED",
+            "alert": "#EF233C", "caution": "#FFB703", "ok": "#38B000",
+            "card_shadow": "none",
+        }
+    else:
+        tokens = {
+            "bg": "#FFFFFF", "panel": "#FFFFFF", "line": "#E4E7EC",
+            "text": "#101828", "dim": "#667085", "accent": "#2F6FED",
+            "alert": "#D92D20", "caution": "#B54708", "ok": "#12805C",
+            "card_shadow": "0 1px 2px rgba(16,24,40,0.05)",
+        }
+
+    return f"""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
-/* "Glass Cockpit" palette - see docs/UI_UX_BLUEPRINT.md */
-:root {
-    --bg: #0B132B;        /* Night Flight Blue */
-    --panel: #1C2541;     /* Instrument Panel */
-    --line: #2E3A63;
-    --text: #F4F6F9;      /* Clear Skies White */
-    --dim: #8D99AE;       /* Stratus Gray */
-    --accent: #00B4D8;    /* Beacon Cyan */
-    --alert: #EF233C;     /* Warning Red */
-    --caution: #FFB703;   /* Taxiway Amber */
-    --ok: #38B000;        /* Safety Green */
-}
+:root {{
+    --bg: {tokens['bg']}; --panel: {tokens['panel']}; --line: {tokens['line']};
+    --text: {tokens['text']}; --dim: {tokens['dim']}; --accent: {tokens['accent']};
+    --alert: {tokens['alert']}; --caution: {tokens['caution']}; --ok: {tokens['ok']};
+    --shadow: {tokens['card_shadow']};
+}}
 
-html, body, [class*="css"] { font-family: 'IBM Plex Sans', -apple-system, sans-serif; }
-.mono, code, [data-testid="stDataFrame"] { font-family: 'IBM Plex Mono', monospace; }
+html, body, [class*="css"] {{ font-family: 'Inter', -apple-system, sans-serif; }}
+.mono, code, [data-testid="stDataFrame"] {{ font-family: 'IBM Plex Mono', monospace; }}
 
-#MainMenu, footer, header[data-testid="stHeader"] { visibility: hidden; height: 0; }
+#MainMenu, footer, header[data-testid="stHeader"] {{ visibility: hidden; height: 0; }}
 
-.stApp { background: var(--bg); color: var(--text); font-size: 16px; }
+.stApp {{ background: var(--bg); color: var(--text); font-size: 16px; }}
 
-section[data-testid="stSidebar"] {
-    background: var(--panel);
-    border-right: 1px solid var(--line);
-}
-section[data-testid="stSidebar"] p { color: var(--dim) !important; font-size: 14px; }
+section[data-testid="stSidebar"] {{
+    background: var(--bg); border-right: 1px solid var(--line);
+}}
+section[data-testid="stSidebar"] p {{ color: var(--dim) !important; font-size: 14px; }}
 
-/* Touch targets: 44px floor per docs/UI_UX_BLUEPRINT.md sec.4 */
-.stSlider [role="slider"] { min-width: 20px; min-height: 20px; }
-button, .stButton button { min-height: 44px; }
+button, .stButton button {{ min-height: 44px; }}
 
-.strip-header {
-    display: flex; justify-content: space-between; align-items: baseline;
-    padding: 8px 0 16px 0; border-bottom: 1px solid var(--line);
-    margin-bottom: 6px; flex-wrap: wrap; gap: 6px;
-}
-.strip-callsign { font-size: 19px; font-weight: 700; color: var(--text); }
-.strip-meta { font-size: 12px; color: var(--dim); }
+/* Hero header - BLADE-style: bold oversized headline, muted subhead, plenty of air */
+.hero {{
+    padding: 28px 0 32px 0; border-bottom: 1px solid var(--line); margin-bottom: 20px;
+}}
+.hero-eyebrow {{
+    font-size: 12px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 10px;
+}}
+.hero-title {{
+    font-size: 40px; font-weight: 800; letter-spacing: -0.5px; color: var(--text);
+    line-height: 1.05; margin-bottom: 10px;
+}}
+.hero-subtitle {{ font-size: 15px; color: var(--dim); max-width: 620px; line-height: 1.5; }}
 
-.section-tag {
+.section-tag {{
     display: inline-flex; align-items: center; font-size: 12px; font-weight: 600;
-    letter-spacing: 0.6px; text-transform: uppercase; color: var(--dim);
+    letter-spacing: 0.5px; text-transform: uppercase; color: var(--dim);
     margin-bottom: 10px; gap: 6px;
-}
-.section-tag::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+}}
+.section-tag::before {{ content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }}
 
-/* Upload target - three states per blueprint sec.2 */
-[data-testid="stFileUploader"] section {
+[data-testid="stFileUploader"] section {{
     background: var(--panel);
-    border: 2px dashed var(--line) !important;
-    border-radius: 10px;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-[data-testid="stFileUploader"] section:hover {
-    border-color: var(--accent) !important;
-    box-shadow: 0 0 0 3px rgba(0,180,216,0.20);
-}
+    border: 1.5px dashed var(--line) !important;
+    border-radius: 12px; box-shadow: var(--shadow);
+    transition: border-color 0.15s ease;
+}}
+[data-testid="stFileUploader"] section:hover {{ border-color: var(--accent) !important; }}
 
-/* METAR panel */
-.metar-panel {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-    padding: 16px 18px; position: sticky; top: 12px;
-}
-.metar-station-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
-.metar-icao { font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 700; color: var(--text); }
-.metar-flightcat {
-    font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.8px;
-    padding: 3px 9px; border-radius: 5px; background: rgba(56,176,0,0.18); color: var(--ok);
-}
-.metar-flightcat.ifr { background: rgba(239,35,60,0.18); color: var(--alert); }
-.metar-grid {
+.metar-panel {{
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 18px 20px; box-shadow: var(--shadow); position: sticky; top: 12px;
+}}
+.metar-station-row {{ display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }}
+.metar-icao {{ font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 700; color: var(--text); }}
+.metar-flightcat {{
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.6px;
+    padding: 3px 9px; border-radius: 5px; background: rgba(18,128,92,0.12); color: var(--ok);
+}}
+.metar-flightcat.ifr {{ background: rgba(217,45,32,0.12); color: var(--alert); }}
+.metar-grid {{
     display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px;
     border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
     padding: 12px 0; margin-bottom: 10px;
-}
-.metar-field-label { font-size: 12px; color: var(--dim); letter-spacing: 0.3px; }
-.metar-field-value { font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 500; color: var(--text); margin-top: 2px; }
-.metar-raw { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--dim); line-height: 1.5; opacity: 0.85; }
-.metar-empty { font-size: 13px; color: var(--dim); }
-.metar-advisory {
+}}
+.metar-field-label {{ font-size: 12px; color: var(--dim); }}
+.metar-field-value {{ font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 500; color: var(--text); margin-top: 2px; }}
+.metar-raw {{ font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--dim); line-height: 1.5; }}
+.metar-empty {{ font-size: 13px; color: var(--dim); }}
+.metar-advisory {{
     display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px;
-    background: rgba(255,183,3,0.12); border: 1px solid rgba(255,183,3,0.35); color: var(--caution);
-    border-radius: 6px; padding: 8px 10px; margin-top: 10px;
-}
+    background: rgba(181,71,8,0.08); border: 1px solid rgba(181,71,8,0.25); color: var(--caution);
+    border-radius: 8px; padding: 8px 10px; margin-top: 10px;
+}}
 
-.readout {
-    border: 1px solid var(--line); border-radius: 10px; padding: 16px; height: 100%;
-    background: var(--panel);
-}
-.readout-label { font-size: 12px; letter-spacing: 0.4px; color: var(--dim); }
-.readout-value { font-family: 'IBM Plex Mono', monospace; font-size: 28px; font-weight: 600; margin-top: 4px; color: var(--text); }
-.readout-value.ok { color: var(--ok); }
-.readout-value.alert { color: var(--alert); }
+.readout {{
+    border: 1px solid var(--line); border-radius: 12px; padding: 18px; height: 100%;
+    background: var(--panel); box-shadow: var(--shadow);
+}}
+.readout-label {{ font-size: 12px; color: var(--dim); }}
+.readout-value {{ font-family: 'IBM Plex Mono', monospace; font-size: 28px; font-weight: 600; margin-top: 4px; color: var(--text); }}
+.readout-value.ok {{ color: var(--ok); }}
+.readout-value.alert {{ color: var(--alert); }}
 
-.verdict {
-    border-radius: 8px; padding: 14px 18px; font-size: 15px; font-weight: 700;
-    display: flex; gap: 10px; align-items: center;
-    background: var(--panel); border-left: 4px solid var(--ok); color: var(--ok);
-}
-.verdict.alert { border-left-color: var(--alert); color: var(--alert); }
-.verdict.dim { border-left-color: var(--line); color: var(--dim); }
+.verdict {{
+    border-radius: 10px; padding: 14px 18px; font-size: 15px; font-weight: 700;
+    display: flex; gap: 10px; align-items: center; background: var(--panel);
+    border: 1px solid var(--line); border-left: 4px solid var(--ok); color: var(--ok);
+}}
+.verdict.alert {{ border-left-color: var(--alert); color: var(--alert); }}
+.verdict.dim {{ border-left-color: var(--line); color: var(--dim); }}
 
-.scope-note {
+.scope-note {{
     font-size: 12.5px; color: var(--dim); line-height: 1.6;
     border-top: 1px solid var(--line); padding-top: 10px; margin-top: 14px;
-}
-.scope-note code { font-family: 'IBM Plex Mono', monospace; background: var(--line); color: var(--text); padding: 1px 5px; border-radius: 3px; }
+}}
+.scope-note code {{ font-family: 'IBM Plex Mono', monospace; background: var(--line); color: var(--text); padding: 1px 5px; border-radius: 3px; }}
 
-/* Bounding-box legend: color = claim of certainty, gray = unverified.
-   See docs/UI_UX_BLUEPRINT.md sec.2 - matches model's actual overlay colors
-   only if ultralytics box colors are customized; documented here as the
-   UI contract even though ultralytics' own plot() uses its own palette. */
-[data-testid="stImage"] img { border-radius: 10px; border: 1px solid var(--line); }
+[data-testid="stImage"] img {{ border-radius: 12px; border: 1px solid var(--line); }}
 
-/* --- Responsive split: PPE feed (7fr) + METAR panel (3fr) on desktop,
-   stacked with PPE first on mobile. Streamlit's st.columns() is a fixed
-   Python-level layout; this media query overrides the rendered flex
-   container so it reflows at the 768px breakpoint. See blueprint sec.1. --- */
-div[data-testid="stHorizontalBlock"]:has(.metar-panel-marker) {
-    align-items: flex-start;
-}
-@media (max-width: 768px) {
-    div[data-testid="stHorizontalBlock"]:has(.metar-panel-marker) {
-        flex-direction: column !important;
-    }
-    div[data-testid="stHorizontalBlock"]:has(.metar-panel-marker) > div {
-        width: 100% !important; flex: 1 1 100% !important;
-    }
-    .metar-panel { position: static; margin-top: 16px; }
-    .readout-value { font-size: 24px; }
-}
+div[data-testid="stHorizontalBlock"]:has(.metar-panel-marker) {{ align-items: flex-start; }}
+@media (max-width: 768px) {{
+    div[data-testid="stHorizontalBlock"]:has(.metar-panel-marker) {{ flex-direction: column !important; }}
+    div[data-testid="stHorizontalBlock"]:has(.metar-panel-marker) > div {{ width: 100% !important; flex: 1 1 100% !important; }}
+    .metar-panel {{ position: static; margin-top: 16px; }}
+    .hero-title {{ font-size: 30px; }}
+}}
 </style>
 """
-st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+
+st.markdown(render_css(st.session_state.theme), unsafe_allow_html=True)
 
 
 def weights_fingerprint(path: Path) -> str:
@@ -243,9 +245,12 @@ def flight_category(weather) -> tuple[str, str]:
 def main() -> None:
     st.markdown(
         """
-        <div class="strip-header">
-            <div class="strip-callsign">ASSIS // PPE BRIEFING</div>
-            <div class="strip-meta">PHASE 1 · VEST-GATED COMPLIANCE · METAR-CONDITIONAL POLICY</div>
+        <div class="hero">
+            <div class="hero-eyebrow">ASSIS · Phase 1</div>
+            <div class="hero-title">RampGuard</div>
+            <div class="hero-subtitle">Automated PPE compliance for airport ramp operations.
+            Upload a photo to check hi-vis vest compliance, weighed against live weather
+            conditions at the airport.</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -328,6 +333,18 @@ def main() -> None:
         return
 
     with st.sidebar:
+        st.markdown('<span class="section-tag dim">Appearance</span>', unsafe_allow_html=True)
+        theme_choice = st.radio(
+            "Theme", ["Light", "Dark"],
+            index=0 if st.session_state.theme == "light" else 1,
+            horizontal=True, label_visibility="collapsed",
+        )
+        new_theme = theme_choice.lower()
+        if new_theme != st.session_state.theme:
+            st.session_state.theme = new_theme
+            st.rerun()
+
+        st.markdown("---")
         st.markdown('<span class="section-tag dim">Thresholds</span>', unsafe_allow_html=True)
         person_conf = st.slider("Person confidence", 0.05, 0.9, 0.50, 0.05)
         if person_conf < 0.40:
