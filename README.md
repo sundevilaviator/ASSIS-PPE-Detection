@@ -1,6 +1,7 @@
+<img width="200" height="150" alt="workflow" src="https://github.com/user-attachments/assets/8b8a767d-1b29-44b4-9255-62c4e0bf787a" />
 # ASSIS — RampGuard: AI-Integrated Airport Safety and Security Intelligence System — Phase 1 (PPE Compliance Detection)
 
-![Workflow Diagram](https://github.com/sundevilaviator/ASSIS-PPE-Detection/raw/main/workflow.svg)
+<img width="2080" height="1560" alt="image" src="https://github.com/user-attachments/assets/94e8d3cd-ddcf-4e3a-a507-aa5ec9726c82" />
 
 ---
 
