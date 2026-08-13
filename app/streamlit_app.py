@@ -44,16 +44,17 @@ CUSTOM_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
 
+/* "Glass Cockpit" palette - see docs/UI_UX_BLUEPRINT.md */
 :root {
-    --bg: #1C2127;
-    --panel: #242A32;
-    --line: #363E48;
-    --text: #E4E7EB;
-    --dim: #8B94A3;
-    --ok: #5FA88A;
-    --alert: #C7695E;
-    --info: #6E93B8;
-    --caution: #C79A4E;
+    --bg: #0B132B;        /* Night Flight Blue */
+    --panel: #1C2541;     /* Instrument Panel */
+    --line: #2E3A63;
+    --text: #F4F6F9;      /* Clear Skies White */
+    --dim: #8D99AE;       /* Stratus Gray */
+    --accent: #00B4D8;    /* Beacon Cyan */
+    --alert: #EF233C;     /* Warning Red */
+    --caution: #FFB703;   /* Taxiway Amber */
+    --ok: #38B000;        /* Safety Green */
 }
 
 html, body, [class*="css"] { font-family: 'IBM Plex Sans', -apple-system, sans-serif; }
@@ -61,69 +62,118 @@ html, body, [class*="css"] { font-family: 'IBM Plex Sans', -apple-system, sans-s
 
 #MainMenu, footer, header[data-testid="stHeader"] { visibility: hidden; height: 0; }
 
-.stApp { background: var(--bg); color: var(--text); }
+.stApp { background: var(--bg); color: var(--text); font-size: 16px; }
 
 section[data-testid="stSidebar"] {
     background: var(--panel);
     border-right: 1px solid var(--line);
 }
-section[data-testid="stSidebar"] p { color: var(--dim) !important; font-size: 13px; }
+section[data-testid="stSidebar"] p { color: var(--dim) !important; font-size: 14px; }
+
+/* Touch targets: 44px floor per docs/UI_UX_BLUEPRINT.md sec.4 */
+.stSlider [role="slider"] { min-width: 20px; min-height: 20px; }
+button, .stButton button { min-height: 44px; }
 
 .strip-header {
     display: flex; justify-content: space-between; align-items: baseline;
     padding: 8px 0 16px 0; border-bottom: 1px solid var(--line);
-    margin-bottom: 6px;
+    margin-bottom: 6px; flex-wrap: wrap; gap: 6px;
 }
-.strip-callsign { font-size: 18px; font-weight: 700; letter-spacing: 0.3px; color: var(--text); }
-.strip-meta { font-size: 11.5px; color: var(--dim); letter-spacing: 0.3px; }
+.strip-callsign { font-size: 19px; font-weight: 700; color: var(--text); }
+.strip-meta { font-size: 12px; color: var(--dim); }
 
 .section-tag {
-    display: inline-flex; align-items: center; font-size: 11px; font-weight: 600;
+    display: inline-flex; align-items: center; font-size: 12px; font-weight: 600;
     letter-spacing: 0.6px; text-transform: uppercase; color: var(--dim);
     margin-bottom: 10px; gap: 6px;
 }
-.section-tag::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+.section-tag::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
 
-.metar-strip {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
-    padding: 14px 18px; margin-bottom: 4px;
+/* Upload target - three states per blueprint sec.2 */
+[data-testid="stFileUploader"] section {
+    background: var(--panel);
+    border: 2px dashed var(--line) !important;
+    border-radius: 10px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
-.metar-station-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-.metar-icao { font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: var(--text); }
+[data-testid="stFileUploader"] section:hover {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 3px rgba(0,180,216,0.20);
+}
+
+/* METAR panel */
+.metar-panel {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 16px 18px; position: sticky; top: 12px;
+}
+.metar-station-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.metar-icao { font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 700; color: var(--text); }
 .metar-flightcat {
-    font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 600; letter-spacing: 0.8px;
-    padding: 2px 8px; border-radius: 4px; background: rgba(95,168,138,0.15); color: var(--ok);
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 700; letter-spacing: 0.8px;
+    padding: 3px 9px; border-radius: 5px; background: rgba(56,176,0,0.18); color: var(--ok);
 }
-.metar-flightcat.ifr { background: rgba(199,105,94,0.15); color: var(--alert); }
-.metar-readout { font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: var(--dim); }
-.metar-raw { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--dim); margin-top: 8px; opacity: 0.75; }
-.metar-empty { font-size: 12.5px; color: var(--dim); }
+.metar-flightcat.ifr { background: rgba(239,35,60,0.18); color: var(--alert); }
+.metar-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px;
+    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+    padding: 12px 0; margin-bottom: 10px;
+}
+.metar-field-label { font-size: 12px; color: var(--dim); letter-spacing: 0.3px; }
+.metar-field-value { font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 500; color: var(--text); margin-top: 2px; }
+.metar-raw { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--dim); line-height: 1.5; opacity: 0.85; }
+.metar-empty { font-size: 13px; color: var(--dim); }
+.metar-advisory {
+    display: flex; gap: 8px; align-items: flex-start; font-size: 12.5px;
+    background: rgba(255,183,3,0.12); border: 1px solid rgba(255,183,3,0.35); color: var(--caution);
+    border-radius: 6px; padding: 8px 10px; margin-top: 10px;
+}
 
 .readout {
-    border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; height: 100%;
+    border: 1px solid var(--line); border-radius: 10px; padding: 16px; height: 100%;
     background: var(--panel);
 }
-.readout-label { font-size: 11px; letter-spacing: 0.5px; color: var(--dim); }
-.readout-value { font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 600; margin-top: 4px; color: var(--text); }
+.readout-label { font-size: 12px; letter-spacing: 0.4px; color: var(--dim); }
+.readout-value { font-family: 'IBM Plex Mono', monospace; font-size: 28px; font-weight: 600; margin-top: 4px; color: var(--text); }
 .readout-value.ok { color: var(--ok); }
 .readout-value.alert { color: var(--alert); }
 
 .verdict {
-    border-radius: 8px; padding: 12px 16px; font-size: 13.5px; font-weight: 600;
+    border-radius: 8px; padding: 14px 18px; font-size: 15px; font-weight: 700;
     display: flex; gap: 10px; align-items: center;
-    background: var(--panel); border-left: 3px solid var(--ok); color: var(--ok);
+    background: var(--panel); border-left: 4px solid var(--ok); color: var(--ok);
 }
 .verdict.alert { border-left-color: var(--alert); color: var(--alert); }
 .verdict.dim { border-left-color: var(--line); color: var(--dim); }
 
 .scope-note {
-    font-size: 12px; color: var(--dim); line-height: 1.6;
+    font-size: 12.5px; color: var(--dim); line-height: 1.6;
     border-top: 1px solid var(--line); padding-top: 10px; margin-top: 14px;
 }
 .scope-note code { font-family: 'IBM Plex Mono', monospace; background: var(--line); color: var(--text); padding: 1px 5px; border-radius: 3px; }
 
-[data-testid="stImage"] img { border-radius: 8px; border: 1px solid var(--line); }
-[data-testid="stFileUploader"] section { background: var(--panel); border: 1px solid var(--line) !important; border-radius: 8px; }
+/* Bounding-box legend: color = claim of certainty, gray = unverified.
+   See docs/UI_UX_BLUEPRINT.md sec.2 - matches model's actual overlay colors
+   only if ultralytics box colors are customized; documented here as the
+   UI contract even though ultralytics' own plot() uses its own palette. */
+[data-testid="stImage"] img { border-radius: 10px; border: 1px solid var(--line); }
+
+/* --- Responsive split: PPE feed (7fr) + METAR panel (3fr) on desktop,
+   stacked with PPE first on mobile. Streamlit's st.columns() is a fixed
+   Python-level layout; this media query overrides the rendered flex
+   container so it reflows at the 768px breakpoint. See blueprint sec.1. --- */
+div[data-testid="stHorizontalBlock"]:has(.metar-panel-marker) {
+    align-items: flex-start;
+}
+@media (max-width: 768px) {
+    div[data-testid="stHorizontalBlock"]:has(.metar-panel-marker) {
+        flex-direction: column !important;
+    }
+    div[data-testid="stHorizontalBlock"]:has(.metar-panel-marker) > div {
+        width: 100% !important; flex: 1 1 100% !important;
+    }
+    .metar-panel { position: static; margin-top: 16px; }
+    .readout-value { font-size: 24px; }
+}
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
@@ -211,55 +261,71 @@ def main() -> None:
         )
         return
 
-    # -----------------------------------------------------------------
-    # METAR briefing strip - moved to the main canvas, not the sidebar,
-    # because it's a primary input to the compliance decision and was
-    # easy to miss tucked in the sidebar.
-    # -----------------------------------------------------------------
-    st.markdown('<span class="section-tag">Weather briefing</span>', unsafe_allow_html=True)
-    bcol1, bcol2 = st.columns([1, 3])
-    with bcol1:
+    feed_col, metar_col = st.columns([7, 3])
+
+    with metar_col:
+        st.markdown('<div class="metar-panel-marker"></div>', unsafe_allow_html=True)
+        st.markdown('<span class="section-tag">Weather briefing</span>', unsafe_allow_html=True)
         station = st.text_input(
             "Airport ICAO code", value="", max_chars=4, placeholder="KCHS",
             label_visibility="collapsed",
         ).strip().upper()
-    with bcol2:
-        st.caption("Enter a 4-letter ICAO code (e.g. KCHS) to pull live METAR and set weather-conditional PPE requirements. Leave blank for fail-safe defaults.")
+        st.caption("4-letter ICAO code (e.g. KCHS). Sets weather-conditional PPE requirements. Blank = fail-safe defaults.")
 
-    weather = None
-    if station:
-        if is_valid_icao(station):
+        weather = None
+        metar_html = ""
+        if station and not is_valid_icao(station):
+            metar_html = '<div class="metar-panel"><span class="metar-empty">⚠ ICAO codes are 4 letters, e.g. KCHS.</span></div>'
+        elif station:
             weather = fetch_metar(station)
+            if weather is None:
+                metar_html = f'<div class="metar-panel"><span class="metar-empty">⚠ No data for {station}. Fail-safe requirements applied.</span></div>'
+            elif weather.is_stale:
+                metar_html = f'<div class="metar-panel"><span class="metar-empty">⚠ Stale observation for {station}. Fail-safe requirements applied.</span></div>'
+            else:
+                cat, cat_cls = flight_category(weather)
+                metar_html = f"""<div class="metar-panel">
+                    <div class="metar-station-row">
+                        <span class="metar-icao">{station}</span>
+                        <span class="metar-flightcat {cat_cls}">{cat}</span>
+                    </div>
+                    <div class="metar-grid">
+                        <div><div class="metar-field-label">WIND</div><div class="metar-field-value">{weather.wind_speed_kt} kt</div></div>
+                        <div><div class="metar-field-label">TEMP</div><div class="metar-field-value">{weather.temp_c}°C</div></div>
+                    </div>
+                    <div class="metar-raw">{weather.raw_metar}</div>
+                </div>"""
         else:
-            st.markdown('<div class="metar-strip"><span class="metar-empty">⚠ ICAO codes are 4 letters, e.g. KCHS.</span></div>', unsafe_allow_html=True)
+            metar_html = '<div class="metar-panel"><span class="metar-empty">No station set — fail-safe PPE requirements (all gating classes required).</span></div>'
 
-    if station and is_valid_icao(station):
-        if weather is None:
-            st.markdown(f'<div class="metar-strip"><span class="metar-empty">⚠ NO DATA — could not reach METAR for {station}. Fail-safe requirements applied.</span></div>', unsafe_allow_html=True)
-        elif weather.is_stale:
-            st.markdown(f'<div class="metar-strip"><span class="metar-empty">⚠ STALE — last observation for {station} exceeds 90 min. Fail-safe requirements applied.</span></div>', unsafe_allow_html=True)
-        else:
-            cat, cat_cls = flight_category(weather)
+        st.markdown(metar_html, unsafe_allow_html=True)
+
+        requirements = determine_requirements(weather)
+        conditional_notes = [
+            f"{cls}: {reason}" for cls, reason in requirements.reasons.items()
+            if "Required:" in reason
+        ]
+        if conditional_notes:
             st.markdown(
-                f"""<div class="metar-strip">
-                        <div class="metar-station-row">
-                            <span class="metar-icao">{station}</span>
-                            <span class="metar-flightcat {cat_cls}">{cat}</span>
-                            <span class="metar-readout">WIND {weather.wind_speed_kt} KT &nbsp;·&nbsp; TEMP {weather.temp_c}°C</span>
-                        </div>
-                        <div class="metar-raw">{weather.raw_metar}</div>
-                    </div>""",
+                '<div class="metar-advisory">⚠ ' + "<br>".join(conditional_notes) + '</div>',
                 unsafe_allow_html=True,
             )
-    elif not station:
-        st.markdown('<div class="metar-strip"><span class="metar-empty">— no station set — using fail-safe PPE requirements (all gating classes required)</span></div>', unsafe_allow_html=True)
+        with st.expander("All PPE requirements"):
+            for cls, reason in requirements.reasons.items():
+                st.markdown(f"**{cls}** — {reason}")
 
-    requirements = determine_requirements(weather)
-    with st.expander("PPE requirements under current conditions"):
-        for cls, reason in requirements.reasons.items():
-            st.markdown(f"**{cls}** — {reason}")
+    with feed_col:
+        st.markdown('<span class="section-tag">Imagery</span>', unsafe_allow_html=True)
+        uploaded = st.file_uploader("Upload a ramp / worksite photo", type=["jpg", "jpeg", "png"])
 
-    st.write("")
+        if uploaded is None:
+            st.markdown('<div class="verdict dim">— awaiting image —</div>', unsafe_allow_html=True)
+            uploaded_none = True
+        else:
+            uploaded_none = False
+
+    if uploaded_none:
+        return
 
     with st.sidebar:
         st.markdown('<span class="section-tag dim">Thresholds</span>', unsafe_allow_html=True)
@@ -307,102 +373,96 @@ def main() -> None:
                 "results - differing values mean different models."
             )
 
-    st.markdown('<span class="section-tag">Imagery</span>', unsafe_allow_html=True)
-    uploaded = st.file_uploader("Upload a ramp / worksite photo", type=["jpg", "jpeg", "png"])
+    with feed_col:
+        image = Image.open(uploaded).convert("RGB")
 
-    if uploaded is None:
-        st.markdown('<div class="verdict dim">— awaiting image —</div>', unsafe_allow_html=True)
-        return
+        # CRITICAL: ultralytics interprets a numpy array as BGR. Passing an RGB
+        # array makes the model see colour-inverted pixels (hi-vis yellow becomes
+        # blue), which silently destroys vest detection. Convert to BGR first.
+        # Regression test: tests/test_channel_order.py
+        image_bgr = np.array(image)[:, :, ::-1]
 
-    image = Image.open(uploaded).convert("RGB")
+        with st.spinner("Running person detection + PPE detection..."):
+            person_results = base_model(image_bgr, conf=person_conf, classes=[0])[0]
+            ppe_results = ppe_model(image_bgr, conf=ppe_conf)[0]
 
-    # CRITICAL: ultralytics interprets a numpy array as BGR. Passing an RGB
-    # array makes the model see colour-inverted pixels (hi-vis yellow becomes
-    # blue), which silently destroys vest detection. Convert to BGR first.
-    # Regression test: tests/test_channel_order.py
-    image_bgr = np.array(image)[:, :, ::-1]
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown('<span class="section-tag dim">Original</span>', unsafe_allow_html=True)
+            st.image(image, use_container_width=True)
+        with col2:
+            st.markdown('<span class="section-tag dim">Detections</span>', unsafe_allow_html=True)
+            st.image(annotated_rgb(ppe_results), use_container_width=True)
 
-    with st.spinner("Running person detection + PPE detection..."):
-        person_results = base_model(image_bgr, conf=person_conf, classes=[0])[0]
-        ppe_results = ppe_model(image_bgr, conf=ppe_conf)[0]
+        summary = summarize_results(person_results, ppe_results, requirements=requirements)
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown('<span class="section-tag dim">Original</span>', unsafe_allow_html=True)
-        st.image(image, use_container_width=True)
-    with col2:
-        st.markdown('<span class="section-tag dim">Detections</span>', unsafe_allow_html=True)
-        st.image(annotated_rgb(ppe_results), use_container_width=True)
+        st.write("")
+        st.markdown('<span class="section-tag">Compliance readout</span>', unsafe_allow_html=True)
 
-    summary = summarize_results(person_results, ppe_results, requirements=requirements)
+        r1, r2, r3, r4 = st.columns(4)
+        v_cls = "alert" if summary.violations else ""
+        ok_cls = "ok" if summary.total_people and not summary.violations else ""
+        for col, label, value, cls in [
+            (r1, "Personnel", summary.total_people, ""),
+            (r2, "Vest compliant", summary.vest_compliant, ok_cls),
+            (r3, "Violations", summary.violations, v_cls),
+            (r4, "Compliance rate", f"{summary.compliance_rate}%", ok_cls or v_cls),
+        ]:
+            col.markdown(
+                f'<div class="readout"><div class="readout-label">{label}</div>'
+                f'<div class="readout-value {cls}">{value}</div></div>',
+                unsafe_allow_html=True,
+            )
 
-    st.write("")
-    st.markdown('<span class="section-tag">Compliance readout</span>', unsafe_allow_html=True)
+        st.write("")
+        if summary.violations > 0:
+            st.markdown(f'<div class="verdict alert">⛔ &nbsp; {summary.status}</div>', unsafe_allow_html=True)
+        elif summary.total_people > 0:
+            st.markdown(f'<div class="verdict ok">✓ &nbsp; {summary.status}</div>', unsafe_allow_html=True)
+        else:
+            st.markdown(f'<div class="verdict dim">— &nbsp; {summary.status}</div>', unsafe_allow_html=True)
 
-    r1, r2, r3, r4 = st.columns(4)
-    v_cls = "alert" if summary.violations else ""
-    ok_cls = "ok" if summary.total_people and not summary.violations else ""
-    for col, label, value, cls in [
-        (r1, "Personnel", summary.total_people, ""),
-        (r2, "Vest compliant", summary.vest_compliant, ok_cls),
-        (r3, "Violations", summary.violations, v_cls),
-        (r4, "Compliance rate", f"{summary.compliance_rate}%", ok_cls or v_cls),
-    ]:
-        col.markdown(
-            f'<div class="readout"><div class="readout-label">{label}</div>'
-            f'<div class="readout-value {cls}">{value}</div></div>',
+        st.markdown(
+            '<div class="scope-note">SCOPE: <code>vest</code> is the validated '
+            "Phase 1 class. <code>helmet</code> and <code>gloves</code> were "
+            "trained on construction-domain imagery and do not yet transfer "
+            "reliably to airport ramp operations — reported for transparency, "
+            "not used in the compliance decision.</div>",
             unsafe_allow_html=True,
         )
 
-    st.write("")
-    if summary.violations > 0:
-        st.markdown(f'<div class="verdict alert">⛔ &nbsp; {summary.status}</div>', unsafe_allow_html=True)
-    elif summary.total_people > 0:
-        st.markdown(f'<div class="verdict ok">✓ &nbsp; {summary.status}</div>', unsafe_allow_html=True)
-    else:
-        st.markdown(f'<div class="verdict dim">— &nbsp; {summary.status}</div>', unsafe_allow_html=True)
-
-    st.markdown(
-        '<div class="scope-note">SCOPE: <code>vest</code> is the validated '
-        "Phase 1 class. <code>helmet</code> and <code>gloves</code> were "
-        "trained on construction-domain imagery and do not yet transfer "
-        "reliably to airport ramp operations — reported for transparency, "
-        "not used in the compliance decision.</div>",
-        unsafe_allow_html=True,
-    )
-
-    with st.expander("Raw detections (all classes, with confidence)"):
-        if ppe_results.boxes is not None and len(ppe_results.boxes) > 0:
-            rows = [
-                {
-                    "class": ppe_results.names[int(b.cls[0])],
-                    "confidence": round(float(b.conf[0]), 3),
-                    "flag": "⚠ unverified — below 0.70" if float(b.conf[0]) < 0.70 else "",
-                    "box_xyxy": [round(v, 1) for v in b.xyxy[0].tolist()],
-                }
-                for b in ppe_results.boxes
-            ]
-            st.dataframe(rows, use_container_width=True)
-            st.caption(
-                "Confirmed genuine vest detections in testing scored "
-                "0.88–0.92. Anything below ~0.70 has not been validated "
-                "as reliable and should be treated as unverified."
-            )
-        else:
-            st.write("No PPE items detected above the current threshold.")
-
-    if summary.people:
-        with st.expander("Per-person compliance detail"):
-            for i, person in enumerate(summary.people, 1):
-                items = "  ".join(
-                    f"{cls}={status.value}" for cls, status in person.status.items()
+        with st.expander("Raw detections (all classes, with confidence)"):
+            if ppe_results.boxes is not None and len(ppe_results.boxes) > 0:
+                rows = [
+                    {
+                        "class": ppe_results.names[int(b.cls[0])],
+                        "confidence": round(float(b.conf[0]), 3),
+                        "flag": "⚠ unverified — below 0.70" if float(b.conf[0]) < 0.70 else "",
+                        "box_xyxy": [round(v, 1) for v in b.xyxy[0].tolist()],
+                    }
+                    for b in ppe_results.boxes
+                ]
+                st.dataframe(rows, use_container_width=True)
+                st.caption(
+                    "Confirmed genuine vest detections in testing scored "
+                    "0.88–0.92. Anything below ~0.70 has not been validated "
+                    "as reliable and should be treated as unverified."
                 )
-                st.write(f"Person {i} (conf {person.confidence}): {items}")
-            st.caption(
-                "INDETERMINATE = not observed, but this class is not yet "
-                "reliable enough (or not currently required) to count as a "
-                "violation. Only VIOLATION affects the compliance rate."
-            )
+            else:
+                st.write("No PPE items detected above the current threshold.")
+
+        if summary.people:
+            with st.expander("Per-person compliance detail"):
+                for i, person in enumerate(summary.people, 1):
+                    items = "  ".join(
+                        f"{cls}={status.value}" for cls, status in person.status.items()
+                    )
+                    st.write(f"Person {i} (conf {person.confidence}): {items}")
+                st.caption(
+                    "INDETERMINATE = not observed, but this class is not yet "
+                    "reliable enough (or not currently required) to count as a "
+                    "violation. Only VIOLATION affects the compliance rate."
+                )
 
 
 if __name__ == "__main__":
