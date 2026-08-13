@@ -24,7 +24,87 @@ from conditions import fetch_metar, determine_requirements, is_valid_icao  # noq
 FINE_TUNED_WEIGHTS = REPO_ROOT / "models" / "best.pt"
 BASE_WEIGHTS = "yolov8n.pt"
 
-st.set_page_config(page_title="ASSIS - PPE Compliance Demo", page_icon="🦺", layout="wide")
+st.set_page_config(page_title="ASSIS - PPE Compliance", page_icon="🛬", layout="wide")
+
+CUSTOM_CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+    --assis-ink: #0F1720;
+    --assis-panel: #17212B;
+    --assis-line: #2A3742;
+    --assis-text: #E6EBF0;
+    --assis-muted: #8B99A6;
+    --assis-amber: #E8A33D;
+    --assis-green: #4CAF7D;
+    --assis-red: #E0604E;
+}
+
+html, body, [class*="css"] { font-family: 'Inter', -apple-system, sans-serif; }
+code, .stCodeBlock, [data-testid="stMetricValue"] { font-family: 'JetBrains Mono', monospace; }
+
+#MainMenu, footer, header[data-testid="stHeader"] { visibility: hidden; height: 0; }
+
+.stApp { background: var(--assis-ink); color: var(--assis-text); }
+
+section[data-testid="stSidebar"] {
+    background: var(--assis-panel);
+    border-right: 1px solid var(--assis-line);
+}
+
+.assis-header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 4px 0 20px 0; margin-bottom: 8px;
+    border-bottom: 1px solid var(--assis-line);
+}
+.assis-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 44px; height: 44px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--assis-amber), #C97F1E);
+    font-size: 22px; flex-shrink: 0;
+}
+.assis-title { font-size: 22px; font-weight: 700; letter-spacing: 0.2px; color: var(--assis-text); line-height: 1.2; }
+.assis-subtitle { font-size: 13px; color: var(--assis-muted); margin-top: 2px; }
+.assis-eyebrow {
+    font-size: 11px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--assis-amber); margin-bottom: 6px;
+}
+
+.assis-card {
+    background: var(--assis-panel); border: 1px solid var(--assis-line);
+    border-radius: 10px; padding: 18px 20px; height: 100%;
+}
+.assis-card-label {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase;
+    color: var(--assis-muted); margin-bottom: 6px;
+}
+.assis-card-value { font-family: 'JetBrains Mono', monospace; font-size: 30px; font-weight: 500; color: var(--assis-text); }
+.assis-card-value.amber { color: var(--assis-amber); }
+.assis-card-value.green { color: var(--assis-green); }
+.assis-card-value.red { color: var(--assis-red); }
+
+.assis-status {
+    border-radius: 10px; padding: 14px 18px; font-weight: 600; font-size: 14px;
+    display: flex; align-items: center; gap: 10px; letter-spacing: 0.2px;
+}
+.assis-status.ok { background: rgba(76,175,125,0.12); border: 1px solid rgba(76,175,125,0.35); color: var(--assis-green); }
+.assis-status.violation { background: rgba(224,96,78,0.12); border: 1px solid rgba(224,96,78,0.35); color: var(--assis-red); }
+.assis-status.neutral { background: rgba(139,153,166,0.10); border: 1px solid var(--assis-line); color: var(--assis-muted); }
+
+.assis-scope-note {
+    font-size: 12.5px; color: var(--assis-muted); line-height: 1.5;
+    border-left: 2px solid var(--assis-line); padding-left: 12px; margin-top: 14px;
+}
+.assis-scope-note code {
+    background: var(--assis-line); padding: 1px 5px; border-radius: 4px; font-size: 11.5px;
+}
+
+[data-testid="stImage"] img { border-radius: 8px; border: 1px solid var(--assis-line); }
+.stTabs [data-baseweb="tab-list"] { gap: 4px; }
+</style>
+"""
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 
 def weights_fingerprint(path: Path) -> str:
@@ -81,10 +161,17 @@ def annotated_rgb(results) -> np.ndarray:
 
 
 def main() -> None:
-    st.title("🦺 ASSIS - PPE Compliance Detection")
-    st.caption(
-        "AI-Integrated Airport Safety & Security Intelligence System · "
-        "Phase 1 MVP · Dual-model person + PPE correlation"
+    st.markdown(
+        """
+        <div class="assis-header">
+            <div class="assis-badge">🛬</div>
+            <div>
+                <div class="assis-title">ASSIS — PPE Compliance Detection</div>
+                <div class="assis-subtitle">AI-Integrated Airport Safety &amp; Security Intelligence System · Phase 1 · Vest-gated compliance with weather-conditional policy</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     fingerprint = weights_fingerprint(FINE_TUNED_WEIGHTS)
@@ -98,12 +185,20 @@ def main() -> None:
         return
 
     with st.sidebar:
-        st.header("Settings")
-        person_conf = st.slider("Person confidence", 0.05, 0.9, 0.40, 0.05)
+        st.markdown('<div class="assis-eyebrow">Detection thresholds</div>', unsafe_allow_html=True)
+        person_conf = st.slider("Person confidence", 0.05, 0.9, 0.50, 0.05)
+        if person_conf < 0.40:
+            st.caption(
+                "⚠️ Below ~0.40, the person detector can pick up false "
+                "positives (background shapes, vehicle structure) that have "
+                "no PPE overlapping them, which are then counted as "
+                "violations. Use 0.5+ for operational results; lower only "
+                "to stress-test."
+            )
         ppe_conf = st.slider("PPE confidence", 0.05, 0.9, 0.40, 0.05)
 
         st.markdown("---")
-        st.subheader("Conditions (optional)")
+        st.markdown('<div class="assis-eyebrow">Conditions</div>', unsafe_allow_html=True)
         station = st.text_input(
             "Airport ICAO code", value="", max_chars=4,
             placeholder="e.g. KCHS",
@@ -121,7 +216,7 @@ def main() -> None:
                 elif weather.is_stale:
                     st.warning(f"METAR for {station} is stale. Using fail-safe defaults.")
                 else:
-                    st.success(f"{station}: {weather.wind_speed_kt} kt, {weather.temp_c}C")
+                    st.success(f"{station} · {weather.wind_speed_kt} kt · {weather.temp_c}°C")
                     st.caption(weather.raw_metar)
             else:
                 st.warning("ICAO codes are 4 letters, e.g. KCHS.")
@@ -132,14 +227,13 @@ def main() -> None:
                 st.write(f"**{cls}**: {reason}")
 
         st.markdown("---")
-        st.markdown(
-            "**How this works**\n\n"
-            "Every uploaded image is run through two models: a person "
-            "detector and a fine-tuned PPE detector. The app checks "
-            "whether each detected person overlaps with a vest detection "
-            "- if not, that person is flagged as a violation."
+        st.markdown('<div class="assis-eyebrow">How this works</div>', unsafe_allow_html=True)
+        st.caption(
+            "Every uploaded image runs through two models: a person "
+            "detector and a fine-tuned PPE detector. A person is compliant "
+            "if a vest detection overlaps their bounding box; if not, "
+            "they're flagged as a violation."
         )
-        st.markdown("---")
         with st.expander("Build diagnostics"):
             import torch
             import ultralytics
@@ -160,7 +254,10 @@ def main() -> None:
     uploaded = st.file_uploader("Upload a ramp / worksite photo", type=["jpg", "jpeg", "png"])
 
     if uploaded is None:
-        st.info("Upload an image to run detection.")
+        st.markdown(
+            '<div class="assis-status neutral">📷 Upload an image to run detection.</div>',
+            unsafe_allow_html=True,
+        )
         return
 
     image = Image.open(uploaded).convert("RGB")
@@ -177,35 +274,49 @@ def main() -> None:
 
     col1, col2 = st.columns(2)
     with col1:
-        st.subheader("Original")
+        st.markdown('<div class="assis-eyebrow">Original</div>', unsafe_allow_html=True)
         st.image(image, use_container_width=True)
     with col2:
-        st.subheader("PPE Detections")
+        st.markdown('<div class="assis-eyebrow">PPE detections</div>', unsafe_allow_html=True)
         st.image(annotated_rgb(ppe_results), use_container_width=True)
 
     summary = summarize_results(person_results, ppe_results, requirements=requirements)
 
-    st.markdown("---")
-    st.subheader("Compliance Summary")
+    st.markdown('<div class="assis-eyebrow" style="margin-top:28px;">Compliance summary</div>', unsafe_allow_html=True)
 
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Personnel Detected", summary.total_people)
-    m2.metric("Vest Compliant", summary.vest_compliant)
-    m3.metric("Violations", summary.violations)
-    m4.metric("Compliance Rate", f"{summary.compliance_rate}%")
+    c1, c2, c3, c4 = st.columns(4)
+    violation_class = "red" if summary.violations else ""
+    compliant_class = "green" if summary.total_people and not summary.violations else ""
+    cards = [
+        (c1, "Personnel detected", summary.total_people, ""),
+        (c2, "Vest compliant", summary.vest_compliant, compliant_class),
+        (c3, "Violations", summary.violations, violation_class),
+        (c4, "Compliance rate", f"{summary.compliance_rate}%", compliant_class or violation_class),
+    ]
+    for col, label, value, cls in cards:
+        col.markdown(
+            f"""<div class="assis-card">
+                    <div class="assis-card-label">{label}</div>
+                    <div class="assis-card-value {cls}">{value}</div>
+                </div>""",
+            unsafe_allow_html=True,
+        )
 
+    st.write("")
     if summary.violations > 0:
-        st.error(summary.status)
+        st.markdown(f'<div class="assis-status violation">⛔ {summary.status}</div>', unsafe_allow_html=True)
     elif summary.total_people > 0:
-        st.success(summary.status)
+        st.markdown(f'<div class="assis-status ok">✅ {summary.status}</div>', unsafe_allow_html=True)
     else:
-        st.info(summary.status)
+        st.markdown(f'<div class="assis-status neutral">— {summary.status}</div>', unsafe_allow_html=True)
 
-    st.caption(
-        "Scope note: `vest` is the validated Phase 1 class. `helmet` and "
-        "`gloves` were trained on construction-domain imagery and do not yet "
-        "transfer reliably to airport ramp operations - they are reported for "
-        "transparency but are not used in the compliance decision."
+    st.markdown(
+        '<div class="assis-scope-note">Scope note: <code>vest</code> is the '
+        "validated Phase 1 class. <code>helmet</code> and <code>gloves</code> "
+        "were trained on construction-domain imagery and do not yet transfer "
+        "reliably to airport ramp operations — they are reported for "
+        "transparency but are not used in the compliance decision.</div>",
+        unsafe_allow_html=True,
     )
 
     with st.expander("Raw detections (all classes, with confidence)"):
