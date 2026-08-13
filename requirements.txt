@@ -1,0 +1,12 @@
+# Pinned so local and Streamlit Community Cloud deployments behave identically.
+# ultralytics >= 8.4 returns Results.plot() in the same channel order as the
+# input array; app/streamlit_app.py depends on that behaviour.
+ultralytics==8.4.118
+torch==2.11.0
+torchvision
+streamlit>=1.35.0
+opencv-python-headless>=4.9.0
+pillow>=10.0.0
+numpy>=1.24.0
+pandas>=2.0.0
+requests==2.32.3
