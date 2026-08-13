@@ -1,5 +1,5 @@
 """
-ASSIS PPE Detection - interactive demo (v2, dual-model violation detection).
+ASSIS PPE Detection - interactive demo (v3, dual-model violation detection).
 
 Run with:
     streamlit run app/streamlit_app.py
@@ -7,6 +7,7 @@ Run with:
 
 from __future__ import annotations
 
+import hashlib
 import sys
 from pathlib import Path
 
@@ -25,17 +26,39 @@ BASE_WEIGHTS = "yolov8n.pt"
 st.set_page_config(page_title="ASSIS - PPE Compliance Demo", page_icon="🦺", layout="wide")
 
 
-@st.cache_resource
-def load_models():
+def weights_fingerprint(path: Path) -> str:
+    """SHA-256 of the weights file.
+
+    Used as a cache key so that replacing models/best.pt automatically
+    invalidates the cached model instead of silently serving a stale one.
+    """
+    if not path.exists():
+        return "missing"
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+@st.cache_resource(show_spinner="Loading detection models...")
+def load_models(fingerprint: str):
+    """Load the person detector and the fine-tuned PPE detector.
+
+    `fingerprint` is not used inside the function - it exists purely so
+    Streamlit re-runs this loader whenever the weights file changes.
+    """
     import torch
 
     # Patch torch.load to default to weights_only=False for this session.
     # Safe here because we are loading our own trained model file, not an
     # untrusted third-party checkpoint.
     _original_load = torch.load
+
     def _patched_load(*args, **kwargs):
         kwargs.setdefault("weights_only", False)
         return _original_load(*args, **kwargs)
+
     torch.load = _patched_load
 
     from ultralytics import YOLO
@@ -46,6 +69,16 @@ def load_models():
         return base_model, ppe_model, True
     return base_model, None, False
 
+
+def annotated_rgb(results) -> np.ndarray:
+    """Return the annotated frame in RGB for display.
+
+    The model is fed a BGR array (see `main`), so `plot()` returns BGR.
+    Reversing the channels converts it back to RGB for Streamlit.
+    """
+    return results.plot()[:, :, ::-1]
+
+
 def main() -> None:
     st.title("🦺 ASSIS - PPE Compliance Detection")
     st.caption(
@@ -53,15 +86,20 @@ def main() -> None:
         "Phase 1 MVP · Dual-model person + PPE correlation"
     )
 
-    base_model, ppe_model, is_trained = load_models()
+    fingerprint = weights_fingerprint(FINE_TUNED_WEIGHTS)
+    base_model, ppe_model, is_trained = load_models(fingerprint)
 
     if not is_trained:
-        st.warning("No trained PPE weights at `models/best.pt`.")
+        st.error(
+            "No trained PPE weights found at `models/best.pt`. "
+            "Train the model (see `notebooks/`) and place `best.pt` in `models/`."
+        )
         return
 
     with st.sidebar:
         st.header("Settings")
-        conf = st.slider("Confidence threshold", 0.1, 0.9, 0.4, 0.05)
+        person_conf = st.slider("Person confidence", 0.05, 0.9, 0.40, 0.05)
+        ppe_conf = st.slider("PPE confidence", 0.05, 0.9, 0.40, 0.05)
         st.markdown("---")
         st.markdown(
             "**How this works**\n\n"
@@ -70,6 +108,23 @@ def main() -> None:
             "whether each detected person overlaps with a vest detection "
             "- if not, that person is flagged as a violation."
         )
+        st.markdown("---")
+        with st.expander("Build diagnostics"):
+            import torch
+            import ultralytics
+
+            st.write(
+                {
+                    "ultralytics": ultralytics.__version__,
+                    "torch": torch.__version__,
+                    "weights_sha256": fingerprint[:12],
+                    "ppe_classes": ppe_model.names,
+                }
+            )
+            st.caption(
+                "Report `weights_sha256` when comparing local and deployed "
+                "results - differing values mean different models."
+            )
 
     uploaded = st.file_uploader("Upload a ramp / worksite photo", type=["jpg", "jpeg", "png"])
 
@@ -78,13 +133,16 @@ def main() -> None:
         return
 
     image = Image.open(uploaded).convert("RGB")
-    image_np = np.array(image)
+
+    # CRITICAL: ultralytics interprets a numpy array as BGR. Passing an RGB
+    # array makes the model see colour-inverted pixels (hi-vis yellow becomes
+    # blue), which silently destroys vest detection. Convert to BGR first.
+    # Regression test: tests/test_channel_order.py
+    image_bgr = np.array(image)[:, :, ::-1]
 
     with st.spinner("Running person detection + PPE detection..."):
-        person_results = base_model(image_np, conf=conf, classes=[0])[0]
-        ppe_results = ppe_model(image_np, conf=conf)[0]
-
-    ppe_annotated = ppe_results.plot()[:, :, ::-1]
+        person_results = base_model(image_bgr, conf=person_conf, classes=[0])[0]
+        ppe_results = ppe_model(image_bgr, conf=ppe_conf)[0]
 
     col1, col2 = st.columns(2)
     with col1:
@@ -92,7 +150,7 @@ def main() -> None:
         st.image(image, use_container_width=True)
     with col2:
         st.subheader("PPE Detections")
-        st.image(ppe_annotated, use_container_width=True)
+        st.image(annotated_rgb(ppe_results), use_container_width=True)
 
     summary = summarize_results(person_results, ppe_results)
 
@@ -112,9 +170,26 @@ def main() -> None:
     else:
         st.info(summary.status)
 
-    if summary.raw_ppe_counts:
-        with st.expander("Raw PPE item detections"):
-            st.write(summary.raw_ppe_counts)
+    st.caption(
+        "Scope note: `vest` is the validated Phase 1 class. `helmet` and "
+        "`gloves` were trained on construction-domain imagery and do not yet "
+        "transfer reliably to airport ramp operations - they are reported for "
+        "transparency but are not used in the compliance decision."
+    )
+
+    with st.expander("Raw detections (all classes, with confidence)"):
+        if ppe_results.boxes is not None and len(ppe_results.boxes) > 0:
+            rows = [
+                {
+                    "class": ppe_results.names[int(b.cls[0])],
+                    "confidence": round(float(b.conf[0]), 3),
+                    "box_xyxy": [round(v, 1) for v in b.xyxy[0].tolist()],
+                }
+                for b in ppe_results.boxes
+            ]
+            st.dataframe(rows, use_container_width=True)
+        else:
+            st.write("No PPE items detected above the current threshold.")
 
     if summary.people:
         with st.expander("Per-person compliance detail"):
