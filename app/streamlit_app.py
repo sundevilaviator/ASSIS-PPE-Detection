@@ -42,102 +42,88 @@ st.set_page_config(page_title="ASSIS PPE // Briefing", page_icon="✈", layout="
 # ---------------------------------------------------------------------------
 CUSTOM_CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
 
 :root {
-    --scope-bg: #0A0D0A;
-    --scope-panel: #10140F;
-    --scope-line: #23301F;
-    --scope-text: #C9D6C4;
-    --scope-dim: #5C6B57;
-    --vfr: #3FBF6B;
-    --mvfr: #4A90D9;
-    --ifr: #D9524A;
-    --lifr: #C24AD9;
-    --caution: #D9A23F;
+    --bg: #1C2127;
+    --panel: #242A32;
+    --line: #363E48;
+    --text: #E4E7EB;
+    --dim: #8B94A3;
+    --ok: #5FA88A;
+    --alert: #C7695E;
+    --info: #6E93B8;
+    --caution: #C79A4E;
 }
 
-html, body, [class*="css"] { font-family: 'IBM Plex Mono', monospace; }
-h1, h2, h3, p, span, div { font-family: 'IBM Plex Mono', monospace; }
-.assis-prose { font-family: 'IBM Plex Sans', sans-serif; }
+html, body, [class*="css"] { font-family: 'IBM Plex Sans', -apple-system, sans-serif; }
+.mono, code, [data-testid="stDataFrame"] { font-family: 'IBM Plex Mono', monospace; }
 
 #MainMenu, footer, header[data-testid="stHeader"] { visibility: hidden; height: 0; }
 
-.stApp { background: var(--scope-bg); color: var(--scope-text); }
-.stApp, .stApp * { scrollbar-color: var(--scope-line) var(--scope-bg); }
+.stApp { background: var(--bg); color: var(--text); }
 
 section[data-testid="stSidebar"] {
-    background: var(--scope-panel);
-    border-right: 1px dashed var(--scope-line);
+    background: var(--panel);
+    border-right: 1px solid var(--line);
 }
-section[data-testid="stSidebar"] label, section[data-testid="stSidebar"] p { color: var(--scope-dim) !important; font-size: 12.5px; }
+section[data-testid="stSidebar"] p { color: var(--dim) !important; font-size: 13px; }
 
-/* Top strip: callsign-style identity bar */
 .strip-header {
     display: flex; justify-content: space-between; align-items: baseline;
-    padding: 10px 0 12px 0; border-bottom: 1px dashed var(--scope-line);
-    margin-bottom: 4px;
+    padding: 8px 0 16px 0; border-bottom: 1px solid var(--line);
+    margin-bottom: 6px;
 }
-.strip-callsign { font-size: 19px; font-weight: 700; letter-spacing: 3px; color: var(--vfr); }
-.strip-meta { font-size: 11px; color: var(--scope-dim); letter-spacing: 0.5px; }
+.strip-callsign { font-size: 18px; font-weight: 700; letter-spacing: 0.3px; color: var(--text); }
+.strip-meta { font-size: 11.5px; color: var(--dim); letter-spacing: 0.3px; }
 
 .section-tag {
-    display: inline-block; font-size: 10.5px; font-weight: 600; letter-spacing: 2px;
-    text-transform: uppercase; color: var(--scope-bg); background: var(--vfr);
-    padding: 2px 8px; margin-bottom: 10px;
+    display: inline-flex; align-items: center; font-size: 11px; font-weight: 600;
+    letter-spacing: 0.6px; text-transform: uppercase; color: var(--dim);
+    margin-bottom: 10px; gap: 6px;
 }
-.section-tag.blue { background: var(--mvfr); }
-.section-tag.dim { background: var(--scope-dim); }
+.section-tag::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
 
-/* METAR briefing strip - the signature element */
 .metar-strip {
-    background: var(--scope-panel); border: 1px dashed var(--scope-line);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
     padding: 14px 18px; margin-bottom: 4px;
 }
-.metar-station-row { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
-.metar-icao { font-size: 24px; font-weight: 700; letter-spacing: 2px; }
-.metar-icao.vfr { color: var(--vfr); }
-.metar-icao.pending { color: var(--scope-dim); }
+.metar-station-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.metar-icao { font-family: 'IBM Plex Mono', monospace; font-size: 20px; font-weight: 600; color: var(--text); }
 .metar-flightcat {
-    font-size: 10.5px; font-weight: 700; letter-spacing: 1.5px; padding: 2px 7px;
-    border: 1px solid currentColor;
+    font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 600; letter-spacing: 0.8px;
+    padding: 2px 8px; border-radius: 4px; background: rgba(95,168,138,0.15); color: var(--ok);
 }
-.metar-flightcat.vfr { color: var(--vfr); }
-.metar-readout {
-    font-size: 12.5px; color: var(--scope-text); margin-top: 8px;
-    letter-spacing: 0.5px; word-spacing: 4px;
-}
-.metar-raw {
-    font-size: 11px; color: var(--scope-dim); margin-top: 6px; letter-spacing: 0.3px;
-}
-.metar-empty { font-size: 12px; color: var(--scope-dim); }
+.metar-flightcat.ifr { background: rgba(199,105,94,0.15); color: var(--alert); }
+.metar-readout { font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: var(--dim); }
+.metar-raw { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--dim); margin-top: 8px; opacity: 0.75; }
+.metar-empty { font-size: 12.5px; color: var(--dim); }
 
-/* Compliance readout cards */
 .readout {
-    border: 1px dashed var(--scope-line); padding: 14px 16px; height: 100%;
+    border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; height: 100%;
+    background: var(--panel);
 }
-.readout-label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--scope-dim); }
-.readout-value { font-size: 28px; font-weight: 600; margin-top: 4px; }
-.readout-value.vfr { color: var(--vfr); }
-.readout-value.ifr { color: var(--ifr); }
+.readout-label { font-size: 11px; letter-spacing: 0.5px; color: var(--dim); }
+.readout-value { font-family: 'IBM Plex Mono', monospace; font-size: 26px; font-weight: 600; margin-top: 4px; color: var(--text); }
+.readout-value.ok { color: var(--ok); }
+.readout-value.alert { color: var(--alert); }
 
 .verdict {
-    border-left: 3px solid var(--vfr); padding: 12px 16px; font-size: 13.5px;
-    font-weight: 600; letter-spacing: 0.5px; display: flex; gap: 10px; align-items: center;
+    border-radius: 8px; padding: 12px 16px; font-size: 13.5px; font-weight: 600;
+    display: flex; gap: 10px; align-items: center;
+    background: var(--panel); border-left: 3px solid var(--ok); color: var(--ok);
 }
-.verdict.ifr { border-left-color: var(--ifr); color: var(--ifr); }
-.verdict.vfr { color: var(--vfr); }
-.verdict.dim { border-left-color: var(--scope-line); color: var(--scope-dim); }
+.verdict.alert { border-left-color: var(--alert); color: var(--alert); }
+.verdict.dim { border-left-color: var(--line); color: var(--dim); }
 
 .scope-note {
-    font-size: 11.5px; color: var(--scope-dim); line-height: 1.6;
-    border-top: 1px dashed var(--scope-line); padding-top: 10px; margin-top: 14px;
+    font-size: 12px; color: var(--dim); line-height: 1.6;
+    border-top: 1px solid var(--line); padding-top: 10px; margin-top: 14px;
 }
-.scope-note code { background: var(--scope-line); color: var(--scope-text); padding: 1px 5px; }
+.scope-note code { font-family: 'IBM Plex Mono', monospace; background: var(--line); color: var(--text); padding: 1px 5px; border-radius: 3px; }
 
-[data-testid="stImage"] img { border: 1px dashed var(--scope-line); }
-[data-testid="stFileUploader"] section { background: var(--scope-panel); border: 1px dashed var(--scope-line) !important; }
-.stSlider { padding-top: 4px; }
+[data-testid="stImage"] img { border-radius: 8px; border: 1px solid var(--line); }
+[data-testid="stFileUploader"] section { background: var(--panel); border: 1px solid var(--line) !important; border-radius: 8px; }
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
@@ -194,14 +180,14 @@ def annotated_rgb(results) -> np.ndarray:
 
 
 def flight_category(weather) -> tuple[str, str]:
-    """Rough VFR/MVFR/IFR/LIFR classification from wind, purely for the
-    briefing-strip badge - not a substitute for an actual flight-category
-    calculation (which also needs ceiling and visibility)."""
+    """Rough VFR/IFR classification from wind, purely for the briefing-strip
+    badge - not a substitute for an actual flight-category calculation
+    (which also needs ceiling and visibility)."""
     if weather is None:
         return "—", "dim"
     if weather.wind_speed_kt is not None and weather.wind_speed_kt >= 30:
         return "IFR", "ifr"
-    return "VFR", "vfr"
+    return "VFR", "ok"
 
 
 def main() -> None:
@@ -257,7 +243,7 @@ def main() -> None:
             st.markdown(
                 f"""<div class="metar-strip">
                         <div class="metar-station-row">
-                            <span class="metar-icao vfr">{station}</span>
+                            <span class="metar-icao">{station}</span>
                             <span class="metar-flightcat {cat_cls}">{cat}</span>
                             <span class="metar-readout">WIND {weather.wind_speed_kt} KT &nbsp;·&nbsp; TEMP {weather.temp_c}°C</span>
                         </div>
@@ -285,7 +271,15 @@ def main() -> None:
                 "PPE overlapping them, counted as violations. Use 0.5+ "
                 "operationally; lower only to stress-test."
             )
-        ppe_conf = st.slider("PPE confidence", 0.05, 0.9, 0.40, 0.05)
+        ppe_conf = st.slider("PPE confidence", 0.05, 0.9, 0.60, 0.05)
+        st.caption(
+            "Default raised to 0.60 after observing a false positive at "
+            "0.44 (a plain shirt misread as a vest in a non-ramp scene). "
+            "Confirmed genuine vest detections in testing cluster at "
+            "0.88–0.92 — there is a real gap between true detections and "
+            "noise around 0.40–0.55. Treat detections in that band as "
+            "unverified, not confirmed."
+        )
 
         st.markdown("---")
         st.markdown('<span class="section-tag dim">How this works</span>', unsafe_allow_html=True)
@@ -346,8 +340,8 @@ def main() -> None:
     st.markdown('<span class="section-tag">Compliance readout</span>', unsafe_allow_html=True)
 
     r1, r2, r3, r4 = st.columns(4)
-    v_cls = "ifr" if summary.violations else ""
-    ok_cls = "vfr" if summary.total_people and not summary.violations else ""
+    v_cls = "alert" if summary.violations else ""
+    ok_cls = "ok" if summary.total_people and not summary.violations else ""
     for col, label, value, cls in [
         (r1, "Personnel", summary.total_people, ""),
         (r2, "Vest compliant", summary.vest_compliant, ok_cls),
@@ -362,9 +356,9 @@ def main() -> None:
 
     st.write("")
     if summary.violations > 0:
-        st.markdown(f'<div class="verdict ifr">⛔ &nbsp; {summary.status}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="verdict alert">⛔ &nbsp; {summary.status}</div>', unsafe_allow_html=True)
     elif summary.total_people > 0:
-        st.markdown(f'<div class="verdict vfr">✓ &nbsp; {summary.status}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="verdict ok">✓ &nbsp; {summary.status}</div>', unsafe_allow_html=True)
     else:
         st.markdown(f'<div class="verdict dim">— &nbsp; {summary.status}</div>', unsafe_allow_html=True)
 
@@ -383,11 +377,17 @@ def main() -> None:
                 {
                     "class": ppe_results.names[int(b.cls[0])],
                     "confidence": round(float(b.conf[0]), 3),
+                    "flag": "⚠ unverified — below 0.70" if float(b.conf[0]) < 0.70 else "",
                     "box_xyxy": [round(v, 1) for v in b.xyxy[0].tolist()],
                 }
                 for b in ppe_results.boxes
             ]
             st.dataframe(rows, use_container_width=True)
+            st.caption(
+                "Confirmed genuine vest detections in testing scored "
+                "0.88–0.92. Anything below ~0.70 has not been validated "
+                "as reliable and should be treated as unverified."
+            )
         else:
             st.write("No PPE items detected above the current threshold.")
 
