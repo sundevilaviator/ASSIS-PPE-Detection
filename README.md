@@ -4,7 +4,7 @@
 
 ---
 
-ASSIS Phase 1 is a dual-model computer-vision system for automated Personal Protective Equipment (PPE) compliance detection in airport ramp environments. It combines a COCO-pretrained YOLOv8 person detector with a fine-tuned YOLOv8 PPE-item detector (gloves, helmet, vest), correlating the two via bounding-box overlap analysis to determine true per-person compliance — not merely whether PPE items are present somewhere in a frame. The model is trained via transfer learning from publicly available construction-industry imagery and validated on real aviation ramp photography.
+ASSIS Phase 1 is a dual-model computer-vision system for automated Personal Protective Equipment (PPE) compliance detection in airport ramp environments. It combines a COCO-pretrained YOLOv8 person detector with a fine-tuned YOLOv8 PPE-item detector (gloves, helmet, vest), correlating the two via bounding-box overlap analysis to determine true per-person compliance; not merely whether PPE items are present somewhere in a frame. The model is trained via transfer learning from publicly available construction-industry imagery and validated on real aviation ramp photography.
 
 ## Table of Contents
 
@@ -24,9 +24,9 @@ ASSIS Phase 1 is a dual-model computer-vision system for automated Personal Prot
 
 ## Overview
 
-U.S. airport ramp and airside operations present a persistent, quantifiable source of occupational risk, with industry estimates placing ramp-accident costs at $10 billion annually worldwide. Personal Protective Equipment compliance — principally high-visibility vests, head protection, and hand protection — is a foundational OSHA-mandated control (29 CFR §1910.132) for mitigating this risk, yet compliance monitoring today remains almost entirely manual and intermittent.
+U.S. airport ramp and airside operations present a persistent, quantifiable source of occupational risk, with industry estimates placing ramp-accident costs at $10 billion annually worldwide. Personal Protective Equipment compliance, principally high-visibility vests, head protection, and hand protection; is a foundational OSHA-mandated control (29 CFR §1910.132) for mitigating this risk, yet compliance monitoring today remains almost entirely manual and intermittent.
 
-ASSIS Phase 1 addresses a narrow, tractable research question: can a YOLOv8 object-detection model, fine-tuned on freely available, non-aviation (construction-industry) PPE imagery, achieve deployable detection accuracy when evaluated against aviation ramp imagery, using only infrastructure airports already possess (existing CCTV)? This is treated as a transfer-learning problem — the underlying visual task is domain-general, while the deployment context (aviation ramp operations, SMS reporting integration, regulatory alignment) is domain-specific.
+ASSIS Phase 1 addresses a narrow, tractable research question: can a YOLOv8 object-detection model, fine-tuned on freely available, non-aviation (construction-industry) PPE imagery, achieve deployable detection accuracy when evaluated against aviation ramp imagery, using only infrastructure airports already possess (existing CCTV)? This is treated as a transfer-learning problem. The underlying visual task is domain-general, while the deployment context (aviation ramp operations, SMS reporting integration, regulatory alignment) is domain-specific.
 
 This module is Phase 1 of the broader ASSIS platform, which is designed to expand to Foreign Object Debris (FOD) detection, fall/slip/trip identification, and credential-misuse alerting in subsequent phases (see [Roadmap](#roadmap)).
 
@@ -34,7 +34,7 @@ This module is Phase 1 of the broader ASSIS platform, which is designed to expan
 
 ## Dual-Model Architecture
 
-Rather than training a dedicated "non-compliant person" class — for which labeled data is scarce — ASSIS determines compliance through a correlation approach:
+Rather than training a dedicated "non-compliant person" class, for which labeled data is scarce — ASSIS determines compliance through a correlation approach:
 
 | Step | Component | Output |
 |---|---|---|
@@ -57,7 +57,7 @@ Ultralytics distributes YOLOv8 in five parameter scales. The nano variant (YOLOv
 | YOLOv8l | 83.7 | 52.9 | Slower |
 | YOLOv8x | 130.5 | 53.9 | Slowest |
 
-For airport ramp deployment on commodity CCTV infrastructure — particularly at small-hub and non-hub facilities without dedicated GPU server hardware — inference latency and edge-deployability are weighted more heavily than the marginal accuracy gains offered by larger variants. YOLOv8n's validation performance on the ASSIS PPE task (mAP50 = 0.922; see [Results](#results)) substantially exceeds its baseline COCO accuracy, consistent with the reduced class complexity and domain specificity of the fine-tuning task relative to general-purpose 80-class object detection.
+For airport ramp deployment on commodity CCTV infrastructure, particularly at small-hub and non-hub facilities without dedicated GPU server hardware, inference latency and edge-deployability are weighted more heavily than the marginal accuracy gains offered by larger variants. YOLOv8n's validation performance on the ASSIS PPE task (mAP50 = 0.922; see [Results](#results)) substantially exceeds its baseline COCO accuracy, consistent with the reduced class complexity and domain specificity of the fine-tuning task relative to general-purpose 80-class object detection.
 
 ---
 
@@ -70,7 +70,7 @@ For airport ramp deployment on commodity CCTV infrastructure — particularly at
 | Edge inference hardware (e.g., NVIDIA Jetson, Raspberry Pi + accelerator) | Planned | Target for Phase 2 field-validation, consistent with low-capital deployment objective for resource-constrained airports |
 | Real-time video pipeline (persistent multi-frame tracking) | Planned | Current implementation evaluated on static frames; see Limitations in accompanying technical paper |
 
-The system's low parameter count and sub-5ms per-frame inference latency (T4 GPU; see [Results](#results)) are intended to support deployment on modest, airport-owned infrastructure rather than requiring dedicated high-performance computing resources — a design constraint informed by the resource limitations documented at small-hub, non-hub, and general aviation facilities.
+The system's low parameter count and sub-5ms per-frame inference latency (T4 GPU; see [Results](#results)) are intended to support deployment on modest, airport-owned infrastructure rather than requiring dedicated high-performance computing resources; a design constraint informed by the resource limitations documented at small-hub, non-hub, and general aviation facilities.
 
 ---
 
@@ -236,7 +236,7 @@ ASSIS is a research framework and decision-support layer. It does not replace re
 
 ### Under Consideration: Instance Segmentation
 
-The current architecture performs bounding-box (rectangular) detection for both person and PPE-item localization. Bounding-box overlap is an approximation of physical PPE-wearing status and can be sensitive to crowded scenes or partial occlusion, where a bystander's bounding box may incidentally overlap a nearby worker's PPE detection. Instance segmentation — pixel-level object masks rather than rectangular boxes — is under consideration as a precision enhancement to the correlation engine described above, and is achievable within the existing YOLOv8 framework (`yolov8n-seg` and comparable segmentation-variant checkpoints) without a change of underlying architecture or toolchain. This is noted as a candidate refinement for a subsequent phase rather than a limitation of the present results.
+The current architecture performs bounding-box (rectangular) detection for both person and PPE-item localization. Bounding-box overlap is an approximation of physical PPE-wearing status and can be sensitive to crowded scenes or partial occlusion, where a bystander's bounding box may incidentally overlap a nearby worker's PPE detection. Instance segmentation, pixel-level object masks rather than rectangular boxes, is under consideration as a precision enhancement to the correlation engine described above, and is achievable within the existing YOLOv8 framework (`yolov8n-seg` and comparable segmentation-variant checkpoints) without a change of underlying architecture or toolchain. This is noted as a candidate refinement for a subsequent phase rather than a limitation of the present results.
 
 See `docs/PROJECT_ROADMAP.md` and `docs/RESEARCH_LOG.md` for detailed, dated progress.
 
