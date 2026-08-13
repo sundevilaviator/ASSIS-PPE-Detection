@@ -19,6 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from utils import summarize_results  # noqa: E402
+from conditions import fetch_metar, determine_requirements, is_valid_icao  # noqa: E402
 
 FINE_TUNED_WEIGHTS = REPO_ROOT / "models" / "best.pt"
 BASE_WEIGHTS = "yolov8n.pt"
@@ -100,6 +101,36 @@ def main() -> None:
         st.header("Settings")
         person_conf = st.slider("Person confidence", 0.05, 0.9, 0.40, 0.05)
         ppe_conf = st.slider("PPE confidence", 0.05, 0.9, 0.40, 0.05)
+
+        st.markdown("---")
+        st.subheader("Conditions (optional)")
+        station = st.text_input(
+            "Airport ICAO code", value="", max_chars=4,
+            placeholder="e.g. KCHS",
+            help="Fetches current METAR to set weather-conditional PPE "
+                 "requirements per docs/PPE_TAXONOMY.md. Leave blank to "
+                 "use fail-safe defaults (see conditions.default_requirements).",
+        ).strip().upper()
+
+        weather = None
+        if station:
+            if is_valid_icao(station):
+                weather = fetch_metar(station)
+                if weather is None:
+                    st.warning(f"Could not fetch METAR for {station}. Using fail-safe defaults.")
+                elif weather.is_stale:
+                    st.warning(f"METAR for {station} is stale. Using fail-safe defaults.")
+                else:
+                    st.success(f"{station}: {weather.wind_speed_kt} kt, {weather.temp_c}C")
+                    st.caption(weather.raw_metar)
+            else:
+                st.warning("ICAO codes are 4 letters, e.g. KCHS.")
+
+        requirements = determine_requirements(weather)
+        with st.expander("Current PPE requirements"):
+            for cls, reason in requirements.reasons.items():
+                st.write(f"**{cls}**: {reason}")
+
         st.markdown("---")
         st.markdown(
             "**How this works**\n\n"
@@ -152,7 +183,7 @@ def main() -> None:
         st.subheader("PPE Detections")
         st.image(annotated_rgb(ppe_results), use_container_width=True)
 
-    summary = summarize_results(person_results, ppe_results)
+    summary = summarize_results(person_results, ppe_results, requirements=requirements)
 
     st.markdown("---")
     st.subheader("Compliance Summary")
@@ -194,12 +225,15 @@ def main() -> None:
     if summary.people:
         with st.expander("Per-person compliance detail"):
             for i, person in enumerate(summary.people, 1):
-                st.write(
-                    f"Person {i} (conf {person.confidence}): "
-                    f"vest={'YES' if person.has_vest else 'NO'}  "
-                    f"helmet={'YES' if person.has_helmet else 'NO'}  "
-                    f"gloves={'YES' if person.has_gloves else 'NO'}"
+                items = "  ".join(
+                    f"{cls}={status.value}" for cls, status in person.status.items()
                 )
+                st.write(f"Person {i} (conf {person.confidence}): {items}")
+            st.caption(
+                "INDETERMINATE = not observed, but this class is not yet "
+                "reliable enough (or not currently required) to count as a "
+                "violation. Only VIOLATION affects the compliance rate."
+            )
 
 
 if __name__ == "__main__":
