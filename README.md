@@ -1,4 +1,3 @@
-[README.md](https://github.com/user-attachments/files/31045966/README.md)
 # ASSIS — RampGuard: AI-Integrated Airport Safety and Security Intelligence System — Phase 1 (PPE Compliance Detection)
 
 ![Workflow Diagram](https://github.com/sundevilaviator/ASSIS-PPE-Detection/raw/main/workflow.svg)
