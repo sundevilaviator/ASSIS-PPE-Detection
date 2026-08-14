@@ -3,6 +3,25 @@
 Dated record of research and development activity. Each entry documents
 concrete progress on the ASSIS platform. (Newest first.)
 
+## 2026-08-13 (continued) — METAR conditional policy, fixes summary, next phase
+
+**METAR-conditional PPE policy.** Implemented `src/conditions.py`, which queries live
+METAR observations (NOAA Aviation Weather Center, no API key required) for a given
+airport and derives which PPE classes are currently required based on wind speed,
+temperature, and reported weather phenomena — rather than applying a fixed requirement
+set. Fails safe to the stricter requirement set if the observation is unavailable or
+older than 90 minutes. Verified live in the deployed app against a real airport code
+(KCHS), returning correct wind/temp/raw METAR data.
+
+**Summary of fixes this session:**
+- BGR/RGB channel-order defect (silent vest-detection failure in deployment) — fixed,
+  regression-tested
+- False-positive vest detection at 0.44 confidence on a non-ramp scene — default
+  threshold raised to 0.60, weak detections flagged as unverified in the UI
+- Stale-cache risk on model reload — cache now keyed to weights file SHA-256
+- FOD Phase 2 vendor-classification error (Stratech/ArgosAI incorrectly grouped as
+  radar vendors) — corrected across FOD_PHASE2_PLAN.md and the white paper
+
 ## 2026-08-12 — 3-class retrain, dual-model violation detection, cross-domain validation
 
 - Simplified dataset from 5 classes to 3: removed `boots` and `human`
