@@ -257,6 +257,59 @@ def flight_category(weather) -> tuple[str, str]:
     return "VFR", "ok"
 
 
+def _estimate_unique_people(frame_results: list) -> int:
+    """Estimate a deduplicated person count across sampled video frames using
+    greedy centroid matching between consecutive sampled frames.
+
+    This is a heuristic, not true re-identification. It has a real, specific
+    limitation worth stating plainly: frames are sampled every ~2 seconds
+    (SAMPLE_EVERY_N_SECONDS in run_video_pipeline), and a person can move far
+    enough in 2 seconds that this matching under-merges (counts one real
+    person as multiple) - especially at typical walking speed across a wide
+    apron shot. It will not over-merge two different people into one unless
+    they happen to occupy nearly the same position in consecutive sampled
+    frames, which is uncommon. Treat the result as a better estimate than
+    raw per-frame summation, not as an exact count. A reliable solution
+    needs either continuous (not sparse) frame tracking with a real
+    tracker (e.g. ByteTrack/DeepSORT, both already available via
+    ultralytics' built-in `model.track()`) or re-identification embeddings -
+    both are real future work, not implemented here.
+    """
+    MATCH_DISTANCE_FRACTION = 0.08  # of frame diagonal - matched empirically, not tuned on real data
+
+    next_id = 0
+    tracked_centroids: dict[int, tuple[float, float]] = {}
+
+    for frame in frame_results:
+        h, w = frame["frame_rgb"].shape[:2]
+        diagonal = (h ** 2 + w ** 2) ** 0.5
+        max_dist = diagonal * MATCH_DISTANCE_FRACTION
+
+        current_centroids = []
+        for person in frame["summary"].people:
+            x1, y1, x2, y2 = person.person_bbox
+            current_centroids.append(((x1 + x2) / 2, (y1 + y2) / 2))
+
+        matched_ids = set()
+        for cx, cy in current_centroids:
+            best_id, best_dist = None, max_dist
+            for tid, (tx, ty) in tracked_centroids.items():
+                if tid in matched_ids:
+                    continue
+                dist = ((cx - tx) ** 2 + (cy - ty) ** 2) ** 0.5
+                if dist < best_dist:
+                    best_id, best_dist = tid, dist
+            if best_id is not None:
+                matched_ids.add(best_id)
+                tracked_centroids[best_id] = (cx, cy)
+            else:
+                tracked_centroids[next_id] = (cx, cy)
+                matched_ids.add(next_id)
+                next_id += 1
+
+    return next_id
+
+
 def run_video_pipeline(uploaded_video, base_model, ppe_model, person_conf, ppe_conf, requirements) -> None:
     """Sample frames from an uploaded video and run the same detection
     pipeline used for single images on each sampled frame.
@@ -322,17 +375,20 @@ def run_video_pipeline(uploaded_video, base_model, ppe_model, person_conf, ppe_c
         st.markdown('<div class="verdict dim">— no frames could be read from this video —</div>', unsafe_allow_html=True)
         return
 
+    unique_person_count = _estimate_unique_people(frame_results)
+
     total_violations = sum(r["summary"].violations for r in frame_results)
     total_people = sum(r["summary"].total_people for r in frame_results)
     total_excluded_small = sum(r["summary"].excluded_small for r in frame_results)
 
     st.write("")
     st.markdown('<span class="section-tag">Video summary</span>', unsafe_allow_html=True)
-    v1, v2, v3 = st.columns(3)
+    v1, v2, v3, v4 = st.columns(4)
     for col, label, value in [
         (v1, "Frames sampled", len(frame_results)),
-        (v2, "Total person-detections", total_people),
-        (v3, "Total violations", total_violations),
+        (v2, "Unique people (estimated)", unique_person_count),
+        (v3, "Raw person-detections", total_people),
+        (v4, "Total violations", total_violations),
     ]:
         cls = "alert" if label == "Total violations" and value else ""
         col.markdown(
@@ -340,6 +396,17 @@ def run_video_pipeline(uploaded_video, base_model, ppe_model, person_conf, ppe_c
             f'<div class="readout-value {cls}">{value}</div></div>',
             unsafe_allow_html=True,
         )
+
+    st.caption(
+        "**Unique people (estimated)** is deduplicated across sampled frames "
+        "using position-based matching between consecutive samples — a "
+        "heuristic estimate, not exact tracking. **Raw person-detections** "
+        "is the un-deduplicated sum shown before (one person visible in 5 "
+        "sampled frames counts 5 times) — kept for comparison. Given ~2s "
+        "gaps between sampled frames, a fast-moving person can still be "
+        "counted more than once; treat 'Unique people' as an improved "
+        "estimate, not an exact count."
+    )
 
     if total_excluded_small:
         st.caption(
@@ -353,14 +420,11 @@ def run_video_pipeline(uploaded_video, base_model, ppe_model, person_conf, ppe_c
         )
 
     st.caption(
-        "Each sampled frame is scored independently, exactly as a single "
-        "uploaded photo would be — there is no cross-frame tracking or "
-        "person-identity persistence yet. A person appearing in 5 sampled "
-        "frames is counted 5 times, not deduplicated as one individual. In "
-        "crowded scenes (many people, wide shots), treat violation counts as "
-        "directional signal, not a precise count — role (ramp worker vs. "
-        "passenger/bystander) cannot currently be distinguished from a "
-        "bounding box alone."
+        "Violation counts are still summed per-frame, not deduplicated by "
+        "person — in crowded scenes (many people, wide shots), treat "
+        "violation counts as directional signal, not a precise count. Role "
+        "(ramp worker vs. passenger/bystander) cannot currently be "
+        "distinguished from a bounding box alone."
     )
 
     st.write("")
@@ -385,8 +449,8 @@ def run_live_camera_pipeline(
 ) -> None:
     """Continuously read from a local camera device and run detection at a
     throttled interval, for on-ramp testing with a physically connected
-    camera (e.g. a Sony Alpha 7 IV via Imaging Edge Webcam or an HDMI
-    capture card). Only works when this app runs locally, not on Streamlit
+    camera (e.g. any webcam, or a photo/video camera in manufacturer webcam
+    mode). Only works when this app runs locally, not on Streamlit
     Community Cloud - see the warning shown in the Live camera tab.
 
     This is intentionally a manual poll loop (Streamlit reruns the script
@@ -596,32 +660,30 @@ def main() -> None:
                 st.markdown(f"**{cls}** — {reason}")
 
     with feed_col:
-        st.markdown('<span class="section-tag">Imagery</span>', unsafe_allow_html=True)
-
-        input_tab, camera_tab, video_tab, live_tab = st.tabs(
-            ["Upload photo", "Camera snapshot", "Upload video", "Live camera (local only)"]
+        mode = st.radio(
+            "Mode",
+            ["Photo analysis", "Video analysis", "Live camera (local only)"],
+            horizontal=True,
+            label_visibility="collapsed",
         )
-        with input_tab:
+        st.markdown("---")
+
+        uploaded = None
+        uploaded_video = None
+        live_running = False
+        device_index = 0
+        detect_every_n = 10
+
+        if mode == "Photo analysis":
+            st.markdown('<span class="section-tag">Photo analysis</span>', unsafe_allow_html=True)
             uploaded = st.file_uploader(
                 "Upload a ramp / worksite photo", type=["jpg", "jpeg", "png"],
                 label_visibility="collapsed",
             )
-        with camera_tab:
-            camera_shot = st.camera_input("Take a photo", label_visibility="collapsed")
-            st.caption(
-                "This uses your browser's own camera picker (not the app "
-                "directly) — if the preview is black or shows the wrong "
-                "device: check your browser's site permissions (camera "
-                "icon in the address bar) and confirm it's allowed for "
-                "this page; if you're using a mirrorless/DSLR camera as a "
-                "webcam via manufacturer software (e.g. Sony Imaging Edge "
-                "Webcam, Canon EOS Webcam Utility, Fujifilm X Webcam), open "
-                "that software first so the camera registers as a webcam "
-                "device before reloading this page; and close any other "
-                "app currently using the camera, since most cameras only "
-                "allow one active connection at a time."
-            )
-        with video_tab:
+            st.caption("Analyzes a single photo. Independent from Video and Live modes below.")
+
+        elif mode == "Video analysis":
+            st.markdown('<span class="section-tag">Video analysis</span>', unsafe_allow_html=True)
             uploaded_video = st.file_uploader(
                 "Upload a ramp / worksite video", type=["mp4", "mov", "avi", "m4v"],
                 label_visibility="collapsed",
@@ -631,9 +693,12 @@ def main() -> None:
                 "sampled frame is run through the same detection pipeline as a "
                 "single photo. This is frame-by-frame processing of an uploaded "
                 "file, not a live camera stream — see docs/FOD_PHASE2_PLAN.md for "
-                "the distinction and what live CCTV ingestion would require."
+                "the distinction and what live CCTV ingestion would require. "
+                "Independent from Photo and Live modes."
             )
-        with live_tab:
+
+        else:  # Live camera
+            st.markdown('<span class="section-tag">Live camera (local only)</span>', unsafe_allow_html=True)
             st.warning(
                 "⚠ Works only when this app is running LOCALLY on a machine "
                 "with a camera attached — either a built-in webcam, a "
@@ -643,7 +708,7 @@ def main() -> None:
                 "Webcam, Nikon Webcam Utility) or connected through an HDMI "
                 "capture card. The deployed cloud version of this app runs "
                 "on a remote server with no access to your local hardware — "
-                "this tab will not work on the live public URL, only when "
+                "this mode will not work on the live public URL, only when "
                 "you run `streamlit run app/streamlit_app.py` yourself on "
                 "the machine the camera is connected to."
             )
@@ -662,13 +727,10 @@ def main() -> None:
                      "= more frequent detection, choppier preview.",
             )
             live_running = st.checkbox("Start live feed")
+            st.caption("Independent from Photo and Video modes.")
 
-        # Resolve which single source is active (video and live camera each
-        # take their own code path below; image/camera share the single-frame path).
-        active_image_source = uploaded or camera_shot
-
-        if active_image_source is None and uploaded_video is None and not live_running:
-            st.markdown('<div class="verdict dim">— awaiting image, video, or live feed —</div>', unsafe_allow_html=True)
+        if uploaded is None and uploaded_video is None and not live_running:
+            st.markdown('<div class="verdict dim">— awaiting input for the selected mode —</div>', unsafe_allow_html=True)
             nothing_provided = True
         else:
             nothing_provided = False
@@ -749,7 +811,7 @@ def main() -> None:
             )
             return
 
-        image = Image.open(active_image_source).convert("RGB")
+        image = Image.open(uploaded).convert("RGB")
 
         # CRITICAL: ultralytics interprets a numpy array as BGR. Passing an RGB
         # array makes the model see colour-inverted pixels (hi-vis yellow becomes
