@@ -242,6 +242,204 @@ def flight_category(weather) -> tuple[str, str]:
     return "VFR", "ok"
 
 
+def run_video_pipeline(uploaded_video, base_model, ppe_model, person_conf, ppe_conf, requirements) -> None:
+    """Sample frames from an uploaded video and run the same detection
+    pipeline used for single images on each sampled frame.
+
+    This is frame-by-frame batch processing of an uploaded file, not live
+    video streaming. A real CCTV/RTSP ingestion pipeline would need a
+    different architecture (continuous capture, not a file upload) - see
+    docs/FOD_PHASE2_PLAN.md Section 4.1 for what that would require.
+    """
+    import cv2
+    import tempfile
+
+    SAMPLE_EVERY_N_SECONDS = 2.0
+    MAX_FRAMES = 30  # cap so a long video doesn't stall the UI or the free tier
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=Path(uploaded_video.name).suffix) as tmp:
+        tmp.write(uploaded_video.read())
+        video_path = tmp.name
+
+    cap = cv2.VideoCapture(video_path)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    frame_interval = max(1, int(fps * SAMPLE_EVERY_N_SECONDS))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    duration_s = total_frames / fps if fps else 0.0
+
+    st.caption(
+        f"Video: {duration_s:.1f}s at ~{fps:.0f} fps. Sampling one frame every "
+        f"{SAMPLE_EVERY_N_SECONDS:.0f}s (up to {MAX_FRAMES} frames)."
+    )
+
+    frame_results = []
+    frame_idx = 0
+    progress = st.progress(0, text="Sampling and running detection on frames...")
+
+    while cap.isOpened() and len(frame_results) < MAX_FRAMES:
+        ret, frame_bgr = cap.read()
+        if not ret:
+            break
+        if frame_idx % frame_interval == 0:
+            timestamp_s = frame_idx / fps if fps else 0.0
+            person_results = base_model(frame_bgr, conf=person_conf, classes=[0], verbose=False)[0]
+            ppe_results = ppe_model(frame_bgr, conf=ppe_conf, verbose=False)[0]
+            summary = summarize_results(person_results, ppe_results, requirements=requirements)
+            frame_rgb = frame_bgr[:, :, ::-1]
+            annotated = annotated_rgb(ppe_results)
+            frame_results.append(
+                {
+                    "timestamp_s": timestamp_s,
+                    "frame_rgb": frame_rgb,
+                    "annotated": annotated,
+                    "summary": summary,
+                }
+            )
+            if total_frames:
+                progress.progress(min(1.0, frame_idx / total_frames), text=f"Frame at {timestamp_s:.1f}s...")
+        frame_idx += 1
+
+    cap.release()
+    progress.empty()
+    Path(video_path).unlink(missing_ok=True)
+
+    if not frame_results:
+        st.markdown('<div class="verdict dim">— no frames could be read from this video —</div>', unsafe_allow_html=True)
+        return
+
+    total_violations = sum(r["summary"].violations for r in frame_results)
+    total_people = sum(r["summary"].total_people for r in frame_results)
+
+    st.write("")
+    st.markdown('<span class="section-tag">Video summary</span>', unsafe_allow_html=True)
+    v1, v2, v3 = st.columns(3)
+    for col, label, value in [
+        (v1, "Frames sampled", len(frame_results)),
+        (v2, "Total person-detections", total_people),
+        (v3, "Total violations", total_violations),
+    ]:
+        cls = "alert" if label == "Total violations" and value else ""
+        col.markdown(
+            f'<div class="readout"><div class="readout-label">{label}</div>'
+            f'<div class="readout-value {cls}">{value}</div></div>',
+            unsafe_allow_html=True,
+        )
+
+    st.caption(
+        "Each sampled frame is scored independently, exactly as a single "
+        "uploaded photo would be — there is no cross-frame tracking or "
+        "person-identity persistence yet. A person appearing in 5 sampled "
+        "frames is counted 5 times, not deduplicated as one individual."
+    )
+
+    st.write("")
+    with st.expander(f"Per-frame detail ({len(frame_results)} sampled frames)", expanded=False):
+        for r in frame_results:
+            fc1, fc2 = st.columns(2)
+            with fc1:
+                st.image(r["frame_rgb"], caption=f"t={r['timestamp_s']:.1f}s — original", use_container_width=True)
+            with fc2:
+                st.image(r["annotated"], caption=f"t={r['timestamp_s']:.1f}s — detections", use_container_width=True)
+            st.write(
+                f"Personnel: {r['summary'].total_people} · "
+                f"Violations: {r['summary'].violations} · "
+                f"Status: {r['summary'].status}"
+            )
+            st.markdown("---")
+
+
+def run_live_camera_pipeline(
+    device_index: int, detect_every_n: int, base_model, ppe_model,
+    person_conf: float, ppe_conf: float, requirements,
+) -> None:
+    """Continuously read from a local camera device and run detection at a
+    throttled interval, for on-ramp testing with a physically connected
+    camera (e.g. a Sony Alpha 7 IV via Imaging Edge Webcam or an HDMI
+    capture card). Only works when this app runs locally, not on Streamlit
+    Community Cloud - see the warning shown in the Live camera tab.
+
+    This is intentionally a manual poll loop (Streamlit reruns the script
+    top-to-bottom on each interaction rather than running an event loop),
+    with a stop button that flips a session_state flag the loop checks.
+    """
+    import cv2
+
+    st.session_state.setdefault("live_stop", False)
+
+    cap = cv2.VideoCapture(device_index)
+    if not cap.isOpened():
+        st.error(
+            f"Could not open camera at device index {device_index}. If using "
+            "a Sony camera, confirm Sony Imaging Edge Webcam is running and "
+            "the camera is powered on and connected via USB. Try a different "
+            "device index if you have multiple cameras."
+        )
+        return
+
+    stop_placeholder = st.empty()
+    frame_placeholder_cols = st.columns(2)
+    summary_placeholder = st.empty()
+
+    if stop_placeholder.button("Stop live feed", key="stop_live"):
+        st.session_state.live_stop = True
+
+    frame_count = 0
+    last_summary = None
+
+    try:
+        while not st.session_state.live_stop:
+            ret, frame_bgr = cap.read()
+            if not ret:
+                st.warning("Lost camera feed (no frame returned). Stopping.")
+                break
+
+            run_detection_this_frame = frame_count % detect_every_n == 0
+
+            if run_detection_this_frame:
+                person_results = base_model(frame_bgr, conf=person_conf, classes=[0], verbose=False)[0]
+                ppe_results = ppe_model(frame_bgr, conf=ppe_conf, verbose=False)[0]
+                last_summary = summarize_results(person_results, ppe_results, requirements=requirements)
+                display_annotated = annotated_rgb(ppe_results)
+            else:
+                display_annotated = frame_bgr[:, :, ::-1]
+
+            with frame_placeholder_cols[0]:
+                st.image(frame_bgr[:, :, ::-1], caption="Live feed", use_container_width=True)
+            with frame_placeholder_cols[1]:
+                st.image(display_annotated, caption="Detections (updates every "
+                          f"{detect_every_n} frames)", use_container_width=True)
+
+            if last_summary is not None:
+                v_cls = "alert" if last_summary.violations else "ok"
+                summary_placeholder.markdown(
+                    f'<div class="verdict {v_cls}">'
+                    f"Personnel: {last_summary.total_people} · "
+                    f"Violations: {last_summary.violations} · "
+                    f"{last_summary.status}</div>",
+                    unsafe_allow_html=True,
+                )
+
+            frame_count += 1
+
+            # Streamlit needs to yield control periodically; without a small
+            # sleep this loop can peg a CPU core and make the stop button
+            # unresponsive.
+            import time
+            time.sleep(0.03)
+
+    finally:
+        cap.release()
+        st.session_state.live_stop = False
+
+    st.caption(
+        "Live mode scores each processed frame independently, same as video "
+        "mode — no cross-frame person tracking. Detection only runs every "
+        f"{detect_every_n} frames to keep the preview responsive; the "
+        "in-between frames show the raw feed with the last detection result "
+        "still displayed as the compliance summary."
+    )
+
+
 def main() -> None:
     st.markdown(
         """
@@ -321,15 +519,66 @@ def main() -> None:
 
     with feed_col:
         st.markdown('<span class="section-tag">Imagery</span>', unsafe_allow_html=True)
-        uploaded = st.file_uploader("Upload a ramp / worksite photo", type=["jpg", "jpeg", "png"])
 
-        if uploaded is None:
-            st.markdown('<div class="verdict dim">— awaiting image —</div>', unsafe_allow_html=True)
-            uploaded_none = True
+        input_tab, camera_tab, video_tab, live_tab = st.tabs(
+            ["Upload photo", "Camera snapshot", "Upload video", "Live camera (local only)"]
+        )
+        with input_tab:
+            uploaded = st.file_uploader(
+                "Upload a ramp / worksite photo", type=["jpg", "jpeg", "png"],
+                label_visibility="collapsed",
+            )
+        with camera_tab:
+            camera_shot = st.camera_input("Take a photo", label_visibility="collapsed")
+        with video_tab:
+            uploaded_video = st.file_uploader(
+                "Upload a ramp / worksite video", type=["mp4", "mov", "avi", "m4v"],
+                label_visibility="collapsed",
+            )
+            st.caption(
+                "Video is sampled at a fixed interval (not every frame) and each "
+                "sampled frame is run through the same detection pipeline as a "
+                "single photo. This is frame-by-frame processing of an uploaded "
+                "file, not a live camera stream — see docs/FOD_PHASE2_PLAN.md for "
+                "the distinction and what live CCTV ingestion would require."
+            )
+        with live_tab:
+            st.warning(
+                "⚠ Works only when this app is running LOCALLY on a machine "
+                "physically connected to a camera (e.g. a Sony Alpha 7 IV via "
+                "Sony Imaging Edge Webcam over USB, or any camera via an HDMI "
+                "capture card). The deployed Streamlit Cloud app runs on a "
+                "remote server with no access to your local hardware — this "
+                "tab will not work on the live public URL, only when you run "
+                "`streamlit run app/streamlit_app.py` yourself with the camera "
+                "attached."
+            )
+            device_index = st.number_input(
+                "Camera device index", min_value=0, max_value=10, value=0, step=1,
+                help="0 is usually the default/built-in camera. A USB webcam "
+                     "device (including Sony's webcam mode) is often 1 or higher "
+                     "if a built-in camera is also present. Try values in order "
+                     "if the feed doesn't appear.",
+            )
+            detect_every_n = st.slider(
+                "Run detection every N frames", 1, 30, 10,
+                help="Higher = smoother video preview, less frequent detection "
+                     "(CPU inference is the bottleneck, not the camera). Lower "
+                     "= more frequent detection, choppier preview.",
+            )
+            live_running = st.checkbox("Start live feed")
+
+        # Resolve which single source is active (video and live camera each
+        # take their own code path below; image/camera share the single-frame path).
+        active_image_source = uploaded or camera_shot
+
+        if active_image_source is None and uploaded_video is None and not live_running:
+            st.markdown('<div class="verdict dim">— awaiting image, video, or live feed —</div>', unsafe_allow_html=True)
+            nothing_provided = True
         else:
-            uploaded_none = False
+            nothing_provided = False
 
-    if uploaded_none:
+    if nothing_provided:
         return
 
     with st.sidebar:
@@ -391,7 +640,21 @@ def main() -> None:
             )
 
     with feed_col:
-        image = Image.open(uploaded).convert("RGB")
+        if live_running:
+            run_live_camera_pipeline(
+                device_index, detect_every_n, base_model, ppe_model,
+                person_conf, ppe_conf, requirements,
+            )
+            return
+
+        if uploaded_video is not None:
+            run_video_pipeline(
+                uploaded_video, base_model, ppe_model,
+                person_conf, ppe_conf, requirements,
+            )
+            return
+
+        image = Image.open(active_image_source).convert("RGB")
 
         # CRITICAL: ultralytics interprets a numpy array as BGR. Passing an RGB
         # array makes the model see colour-inverted pixels (hi-vis yellow becomes
