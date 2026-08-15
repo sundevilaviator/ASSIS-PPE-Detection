@@ -44,20 +44,30 @@ OVERLAP_THRESHOLD = 0.10
 # smaller than this are excluded from compliance scoring entirely (not even
 # INDETERMINATE - simply not counted as "personnel").
 #
-# Rationale (added after crowded-scene testing, see RESEARCH_LOG.md): a
-# generic COCO person detector has no concept of "ramp worker" vs. "anyone
-# visible in frame" - it detects boarding passengers on a jet bridge, distant
-# background staff, and vested ramp agents identically. In a wide apron shot
-# this inflates the "personnel" count with people who were never wearing
-# PPE-relevant roles in the first place, producing misleadingly high
-# violation counts. Filtering by relative size is a partial, honest mitigation
-# (distant/small people are excluded), not a fix for the underlying problem,
-# which is that role cannot be inferred from a bounding box alone. A real fix
-# would need either a configurable region-of-interest (ramp work zone only,
-# excluding jet bridges/passenger paths - see the "exclusion zones" concept
-# already specified for FOD in docs/FOD_PHASE2_PLAN.md Section 4.3, which
-# applies equally well here) or a person re-identification/tracking layer.
-MIN_PERSON_HEIGHT_FRACTION = 0.15
+# CALIBRATION HISTORY (see RESEARCH_LOG.md for dated entries):
+# - Initially set to 0.15, intended to exclude distant background people
+#   (e.g. boarding passengers) from a crowded wide-shot test that produced
+#   89 false violations.
+# - That value was too aggressive: tested against a normal wide apron
+#   establishing shot with real, legitimately-distant ramp agents (~6-8% of
+#   frame height at typical working camera distance), it excluded EVERYONE,
+#   including actual vested workers, producing 0 personnel detected on a
+#   video with 4 real agents present. This was a worse failure than the
+#   problem it was meant to fix.
+# - Lowered to 0.03 to only exclude genuinely tiny/far-background
+#   detections (noise-level, not real working-distance personnel), rather
+#   than trying to separate "worker" from "passenger" by size - the two can
+#   appear at similar apparent size (e.g. a passenger boarding stairs near
+#   the aircraft vs. a ramp agent standing nearby), so size alone is a weak
+#   and now demonstrably unreliable proxy for role.
+#
+# HONEST LIMITATION: this filter cannot reliably solve the original crowded-
+# scene problem (distinguishing workers from bystanders) - it can only strip
+# clear background noise. The real fix is still a configurable region-of-
+# interest / exclusion-zone system (see docs/FOD_PHASE2_PLAN.md Section 4.3,
+# "Exclusion zones" - the same concept applies directly here) or a person
+# role classifier, neither of which exists yet.
+MIN_PERSON_HEIGHT_FRACTION = 0.03
 
 
 class ItemStatus(str, Enum):
