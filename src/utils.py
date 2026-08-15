@@ -128,6 +128,7 @@ class ComplianceSummary:
     raw_ppe_counts: dict = field(default_factory=dict)
     requirements_reasons: dict = field(default_factory=dict)
     excluded_small: int = 0
+    total_person_detections_unfiltered: int = 0  # every COCO person box, before any filtering
 
     @property
     def total_people(self) -> int:
@@ -194,12 +195,14 @@ def summarize_results(person_results, ppe_results, requirements=None, frame_heig
         frame_height * MIN_PERSON_HEIGHT_FRACTION if frame_height else 0.0
     )
     excluded_small = 0
+    total_unfiltered = 0
 
     if person_results.boxes is not None:
         for box in person_results.boxes:
             cls_id = int(box.cls[0])
             if cls_id != COCO_PERSON_CLASS_ID:
                 continue
+            total_unfiltered += 1
             person_box = box.xyxy[0].tolist()
             conf = float(box.conf[0])
 
@@ -231,4 +234,5 @@ def summarize_results(person_results, ppe_results, requirements=None, frame_heig
                 )
             )
     summary.excluded_small = excluded_small
+    summary.total_person_detections_unfiltered = total_unfiltered
     return summary
