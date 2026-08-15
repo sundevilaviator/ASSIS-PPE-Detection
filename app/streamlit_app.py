@@ -18,11 +18,24 @@ from PIL import Image
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from utils import summarize_results  # noqa: E402
+from utils import summarize_results, MIN_PERSON_HEIGHT_FRACTION  # noqa: E402
 from conditions import fetch_metar, determine_requirements, is_valid_icao  # noqa: E402
 
 FINE_TUNED_WEIGHTS = REPO_ROOT / "models" / "best.pt"
 BASE_WEIGHTS = "yolov8n.pt"
+
+# Inference resolution for both models. Ultralytics defaults to 640 if not
+# specified, which silently fails on wide/distant camera shots - a real
+# vested worker at typical elevated-CCTV ramp-camera distance (occupying
+# ~9-11% of a 1920x1080 frame's height) produced ZERO vest detection at
+# imgsz=640 or even 960, but 0.849 confidence at imgsz=1280 on identical
+# imagery (see RESEARCH_LOG.md for the dated finding). This mirrors the
+# Phase 1 helmet/gloves resolution finding, now confirmed to affect vest
+# detection too under realistic wide-shot camera geometry, not just close-up
+# photos. Cost: ~3.6x slower per frame on CPU (165ms -> 592ms, measured) -
+# acceptable for single photos and sampled video frames, worth monitoring
+# if extended to real-time full-framerate use.
+INFERENCE_IMGSZ = 1280
 
 st.set_page_config(page_title="ASSIS — RampGuard", page_icon="✈", layout="wide")
 
@@ -310,7 +323,7 @@ def _estimate_unique_people(frame_results: list) -> int:
     return next_id
 
 
-def run_video_pipeline(uploaded_video, base_model, ppe_model, person_conf, ppe_conf, requirements) -> None:
+def run_video_pipeline(uploaded_video, base_model, ppe_model, person_conf, ppe_conf, requirements, apply_size_filter=True) -> None:
     """Sample frames from an uploaded video and run the same detection
     pipeline used for single images on each sampled frame.
 
@@ -350,9 +363,10 @@ def run_video_pipeline(uploaded_video, base_model, ppe_model, person_conf, ppe_c
             break
         if frame_idx % frame_interval == 0:
             timestamp_s = frame_idx / fps if fps else 0.0
-            person_results = base_model(frame_bgr, conf=person_conf, classes=[0], verbose=False)[0]
-            ppe_results = ppe_model(frame_bgr, conf=ppe_conf, verbose=False)[0]
-            summary = summarize_results(person_results, ppe_results, requirements=requirements, frame_height=frame_bgr.shape[0])
+            person_results = base_model(frame_bgr, conf=person_conf, classes=[0], imgsz=INFERENCE_IMGSZ, verbose=False)[0]
+            ppe_results = ppe_model(frame_bgr, conf=ppe_conf, imgsz=INFERENCE_IMGSZ, verbose=False)[0]
+            filter_height = frame_bgr.shape[0] if apply_size_filter else None
+            summary = summarize_results(person_results, ppe_results, requirements=requirements, frame_height=filter_height)
             frame_rgb = frame_bgr[:, :, ::-1]
             annotated = annotated_rgb(ppe_results)
             frame_results.append(
@@ -380,6 +394,7 @@ def run_video_pipeline(uploaded_video, base_model, ppe_model, person_conf, ppe_c
     total_violations = sum(r["summary"].violations for r in frame_results)
     total_people = sum(r["summary"].total_people for r in frame_results)
     total_excluded_small = sum(r["summary"].excluded_small for r in frame_results)
+    total_unfiltered = sum(r["summary"].total_person_detections_unfiltered for r in frame_results)
 
     st.write("")
     st.markdown('<span class="section-tag">Video summary</span>', unsafe_allow_html=True)
@@ -387,7 +402,7 @@ def run_video_pipeline(uploaded_video, base_model, ppe_model, person_conf, ppe_c
     for col, label, value in [
         (v1, "Frames sampled", len(frame_results)),
         (v2, "Unique people (estimated)", unique_person_count),
-        (v3, "Raw person-detections", total_people),
+        (v3, "Counted (after size filter)", total_people),
         (v4, "Total violations", total_violations),
     ]:
         cls = "alert" if label == "Total violations" and value else ""
@@ -397,15 +412,55 @@ def run_video_pipeline(uploaded_video, base_model, ppe_model, person_conf, ppe_c
             unsafe_allow_html=True,
         )
 
+    if total_people == 0 and total_unfiltered > 0:
+        st.markdown(
+            f'<div class="verdict alert">⚠ The person detector found '
+            f'{total_unfiltered} raw detection(s) across all sampled frames, '
+            f'but the minimum-size filter excluded all of them — 0 remained '
+            f'for compliance scoring. Try unchecking "Apply minimum-size '
+            f'filter" below to confirm, and/or lower the threshold in '
+            f'src/utils.py (MIN_PERSON_HEIGHT_FRACTION).</div>',
+            unsafe_allow_html=True,
+        )
+    elif total_unfiltered == 0:
+        st.markdown(
+            '<div class="verdict alert">⚠ The person detector found zero raw '
+            'detections in any sampled frame — this is not a filtering issue, '
+            'the underlying model is not seeing people in this video at all. '
+            'Possible causes: person confidence threshold too high for this '
+            'footage, video resolution/quality, or an outdated deployment '
+            '(confirm the latest src/utils.py and app/streamlit_app.py were '
+            'pushed and the app was rebooted).</div>',
+            unsafe_allow_html=True,
+        )
+
+    with st.expander("Diagnostic: detection counts at each stage"):
+        st.write(
+            {
+                "Raw detections (before any filtering)": total_unfiltered,
+                "Excluded by minimum-size filter": total_excluded_small,
+                "Counted for compliance (after filter)": total_people,
+                "Estimated unique people (after dedup)": unique_person_count,
+                "min_person_height_fraction (current)": MIN_PERSON_HEIGHT_FRACTION,
+            }
+        )
+        st.caption(
+            "If 'Raw detections' is 0, the size filter is not the cause — "
+            "the model itself isn't detecting people in this footage. If "
+            "'Raw detections' is high but 'Counted for compliance' is 0, "
+            "the size filter is excluding everyone and needs further "
+            "tuning for this camera's distance/angle."
+        )
+
     st.caption(
         "**Unique people (estimated)** is deduplicated across sampled frames "
         "using position-based matching between consecutive samples — a "
-        "heuristic estimate, not exact tracking. **Raw person-detections** "
-        "is the un-deduplicated sum shown before (one person visible in 5 "
-        "sampled frames counts 5 times) — kept for comparison. Given ~2s "
-        "gaps between sampled frames, a fast-moving person can still be "
-        "counted more than once; treat 'Unique people' as an improved "
-        "estimate, not an exact count."
+        "heuristic estimate, not exact tracking. **Counted (after size "
+        "filter)** is the un-deduplicated sum after excluding small/distant "
+        "detections (one person visible in 5 sampled frames counts 5 times) "
+        "— kept for comparison. Given ~2s gaps between sampled frames, a "
+        "fast-moving person can still be counted more than once; treat "
+        "'Unique people' as an improved estimate, not an exact count."
     )
 
     if total_excluded_small:
@@ -493,8 +548,8 @@ def run_live_camera_pipeline(
             run_detection_this_frame = frame_count % detect_every_n == 0
 
             if run_detection_this_frame:
-                person_results = base_model(frame_bgr, conf=person_conf, classes=[0], verbose=False)[0]
-                ppe_results = ppe_model(frame_bgr, conf=ppe_conf, verbose=False)[0]
+                person_results = base_model(frame_bgr, conf=person_conf, classes=[0], imgsz=INFERENCE_IMGSZ, verbose=False)[0]
+                ppe_results = ppe_model(frame_bgr, conf=ppe_conf, imgsz=INFERENCE_IMGSZ, verbose=False)[0]
                 last_summary = summarize_results(person_results, ppe_results, requirements=requirements, frame_height=frame_bgr.shape[0])
                 display_annotated = annotated_rgb(ppe_results)
             else:
@@ -671,6 +726,7 @@ def main() -> None:
         uploaded = None
         uploaded_video = None
         live_running = False
+        apply_size_filter = True
         device_index = 0
         detect_every_n = 10
 
@@ -687,6 +743,14 @@ def main() -> None:
             uploaded_video = st.file_uploader(
                 "Upload a ramp / worksite video", type=["mp4", "mov", "avi", "m4v"],
                 label_visibility="collapsed",
+            )
+            apply_size_filter = st.checkbox(
+                "Apply minimum-size filter (excludes small/distant detections)",
+                value=True,
+                help="Uncheck to see every raw person detection with no "
+                     "filtering — useful for diagnosing whether a '0 people' "
+                     "result is caused by the filter or by the detector "
+                     "itself finding nothing.",
             )
             st.caption(
                 "Video is sampled at a fixed interval (not every frame) and each "
@@ -807,7 +871,7 @@ def main() -> None:
         if uploaded_video is not None:
             run_video_pipeline(
                 uploaded_video, base_model, ppe_model,
-                person_conf, ppe_conf, requirements,
+                person_conf, ppe_conf, requirements, apply_size_filter,
             )
             return
 
@@ -820,8 +884,8 @@ def main() -> None:
         image_bgr = np.array(image)[:, :, ::-1]
 
         with st.spinner("Running person detection + PPE detection..."):
-            person_results = base_model(image_bgr, conf=person_conf, classes=[0])[0]
-            ppe_results = ppe_model(image_bgr, conf=ppe_conf)[0]
+            person_results = base_model(image_bgr, conf=person_conf, classes=[0], imgsz=INFERENCE_IMGSZ)[0]
+            ppe_results = ppe_model(image_bgr, conf=ppe_conf, imgsz=INFERENCE_IMGSZ)[0]
 
         col1, col2 = st.columns(2)
         with col1:
