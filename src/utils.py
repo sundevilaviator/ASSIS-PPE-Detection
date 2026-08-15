@@ -40,6 +40,25 @@ GATING_CLASSES = {"vest"}
 COCO_PERSON_CLASS_ID = 0
 OVERLAP_THRESHOLD = 0.10
 
+# Minimum person bounding-box height as a fraction of frame height. Detections
+# smaller than this are excluded from compliance scoring entirely (not even
+# INDETERMINATE - simply not counted as "personnel").
+#
+# Rationale (added after crowded-scene testing, see RESEARCH_LOG.md): a
+# generic COCO person detector has no concept of "ramp worker" vs. "anyone
+# visible in frame" - it detects boarding passengers on a jet bridge, distant
+# background staff, and vested ramp agents identically. In a wide apron shot
+# this inflates the "personnel" count with people who were never wearing
+# PPE-relevant roles in the first place, producing misleadingly high
+# violation counts. Filtering by relative size is a partial, honest mitigation
+# (distant/small people are excluded), not a fix for the underlying problem,
+# which is that role cannot be inferred from a bounding box alone. A real fix
+# would need either a configurable region-of-interest (ramp work zone only,
+# excluding jet bridges/passenger paths - see the "exclusion zones" concept
+# already specified for FOD in docs/FOD_PHASE2_PLAN.md Section 4.3, which
+# applies equally well here) or a person re-identification/tracking layer.
+MIN_PERSON_HEIGHT_FRACTION = 0.15
+
 
 class ItemStatus(str, Enum):
     COMPLIANT = "COMPLIANT"
@@ -98,6 +117,7 @@ class ComplianceSummary:
     people: list = field(default_factory=list)
     raw_ppe_counts: dict = field(default_factory=dict)
     requirements_reasons: dict = field(default_factory=dict)
+    excluded_small: int = 0
 
     @property
     def total_people(self) -> int:
@@ -126,13 +146,19 @@ class ComplianceSummary:
         return f"VIOLATION(S) DETECTED: {self.violations}"
 
 
-def summarize_results(person_results, ppe_results, requirements=None) -> ComplianceSummary:
+def summarize_results(person_results, ppe_results, requirements=None, frame_height=None) -> ComplianceSummary:
     """Build a compliance summary.
 
     `requirements` is an optional conditions.PPERequirements (see
     src/conditions.py). If omitted, every class is treated as required,
     which reproduces v3 behaviour for vest (the only gating class) and
     keeps helmet/gloves informational only.
+
+    `frame_height` (pixels) enables the minimum-person-size filter (see
+    MIN_PERSON_HEIGHT_FRACTION above). If omitted, no size filtering is
+    applied - every detected person is scored regardless of distance,
+    reproducing prior behaviour. Pass it explicitly for crowded/wide-shot
+    scenes where distant background people should not count as "personnel."
     """
     summary = ComplianceSummary()
     if requirements is not None:
@@ -154,6 +180,11 @@ def summarize_results(person_results, ppe_results, requirements=None) -> Complia
         "gloves": getattr(requirements, "gloves", False),
     }
 
+    min_height_px = (
+        frame_height * MIN_PERSON_HEIGHT_FRACTION if frame_height else 0.0
+    )
+    excluded_small = 0
+
     if person_results.boxes is not None:
         for box in person_results.boxes:
             cls_id = int(box.cls[0])
@@ -161,6 +192,11 @@ def summarize_results(person_results, ppe_results, requirements=None) -> Complia
                 continue
             person_box = box.xyxy[0].tolist()
             conf = float(box.conf[0])
+
+            box_height = person_box[3] - person_box[1]
+            if box_height < min_height_px:
+                excluded_small += 1
+                continue
 
             detected = {
                 label: any(
@@ -184,4 +220,5 @@ def summarize_results(person_results, ppe_results, requirements=None) -> Complia
                     status=item_status,
                 )
             )
+    summary.excluded_small = excluded_small
     return summary
