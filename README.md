@@ -2,8 +2,6 @@
 
 # ASSIS — RampGuard: AI-Integrated Airport Safety and Security Intelligence System — Phase 1 (PPE Compliance Detection)
 
-![Workflow Diagram](https://github.com/sundevilaviator/ASSIS-PPE-Detection/raw/main/workflow.svg)
-
 ---
 
 ASSIS Phase 1, codenamed **RampGuard**, is a dual-model computer-vision system for automated Personal Protective Equipment (PPE) compliance detection in airport ramp environments. It combines a COCO-pretrained YOLOv8 person detector with a fine-tuned YOLOv8 PPE-item detector (gloves, helmet, vest), correlating the two via bounding-box overlap analysis to determine true per-person compliance — not merely whether PPE items are present somewhere in a frame. Compliance is reported in three states (compliant / violation / indeterminate) rather than a binary pass/fail, and PPE requirements are conditioned on live weather data (METAR) rather than fixed. The model is trained via transfer learning from publicly available construction-industry imagery and validated on real aviation ramp photography.
