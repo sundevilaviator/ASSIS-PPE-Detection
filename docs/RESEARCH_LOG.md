@@ -1,14 +1,10 @@
 # ASSIS Research Log
 
-Dated record of research and development activity. Each entry documents
-concrete progress on the ASSIS platform. (Newest first.)
+Dated record of research and development activity. Each entry documents concrete progress on the ASSIS platform. (Newest first.)
 
-## 2026-08-13 — Critical inference bug identified and fixed (BGR/RGB channel order)
+## 2026-08-13 — Critical inference bug: BGR/RGB channel order
 
-**Defect.** The Streamlit demo application passed an **RGB** numpy array to
-the YOLOv8 model. Ultralytics interprets numpy array inputs as **BGR**, so
-the model received colour-inverted pixels — high-visibility yellow rendered
-as blue. Detection degraded severely with no error raised.
+**The defect.** The Streamlit demo passed an RGB numpy array to the YOLOv8 model. Ultralytics treats numpy arrays as BGR by convention, so the model was seeing colour-inverted pixels — high-visibility yellow rendered as blue. Detection failed silently, with no error at any stage.
 
 **Evidence** (night ramp-marshalling photograph, `models/best.pt`, conf=0.4):
 
@@ -16,202 +12,147 @@ as blue. Detection degraded severely with no error raised.
 |---|---|
 | File path | `vest 0.92` |
 | PIL image | `vest 0.92` |
-| numpy RGB (defective app path) | *none* |
+| numpy RGB (the defective app path) | none |
 | numpy BGR (corrected) | `vest 0.92` |
 
-This reconciles a previously unexplained discrepancy: Colab evaluation passed
-a file path and succeeded, while the deployed application passed an RGB array
-and failed on the identical image.
+This explains a discrepancy that had looked inconsistent up to this point: Colab evaluation passed a file path and worked fine, while the deployed app passed an RGB array and failed on the identical photo.
 
-**Fixes applied.**
-- `app/streamlit_app.py`: convert RGB → BGR before inference; `plot()` output
-  reversed back to RGB for display (this also resolves the inverted colours
-  visible in earlier demo screenshots).
-- `tests/test_channel_order.py`: three regression tests pinning the input
-  convention, with a committed fixture image. All passing.
-- `src/detect.py`: repaired — it called `summarize_results()` with one
-  argument (two required) and read a non-existent `.compliant` attribute; the
-  CLI crashed on every invocation. Now uses the same dual-model path as the app.
-- `app/streamlit_app.py`: `@st.cache_resource` now keyed on a SHA-256
-  fingerprint of `models/best.pt`, so replacing the weights invalidates the
-  cache instead of silently serving a stale model. Build diagnostics panel
-  added (ultralytics/torch versions, weights hash) for local-vs-deployed
-  comparison.
-- `requirements.txt`: ultralytics pinned to `8.4.118` for reproducibility.
+**Fixes applied:**
+- `app/streamlit_app.py` now converts RGB to BGR before inference, and reverses `plot()`'s output back to RGB for display. This also explains the inverted colours visible in earlier demo screenshots.
+- Added `tests/test_channel_order.py` — three regression tests pinning the input convention, with a committed fixture image. All pass.
+- Repaired `src/detect.py`, which was calling `summarize_results()` with one argument instead of two and reading a `.compliant` attribute that doesn't exist. It crashed on every invocation. It now uses the same dual-model path as the app.
+- `@st.cache_resource` is now keyed on a SHA-256 fingerprint of `models/best.pt`, so swapping the weights invalidates the cache instead of silently serving a stale model. Added a build-diagnostics panel (ultralytics/torch versions, weights hash) for comparing local runs against the deployed one.
+- Pinned ultralytics to `8.4.118` in `requirements.txt` for reproducibility.
 
-**Re-evaluation after fix.** `vest` detects reliably on aviation ramp imagery
-(0.883 and 0.920 on two held-out photographs, correctly correlated to
-personnel). `helmet` and `gloves` remain undetected on the same imagery even
-at conf=0.05 — confirmed as a genuine limitation *after* eliminating the
-channel-order confound, not an artefact of it. Assessed causes: the `helmet`
-class was trained on rigid construction hard hats, which are not standard ramp
-PPE (ramp personnel wear caps and hearing protection); `gloves` was already
-the weakest class in-domain (0.804 mAP50) and degrades further at the object
-scale typical of wide-angle apron photography.
+**Re-evaluation after the fix.** Vest detects reliably on aviation ramp imagery — 0.883 and 0.920 on two held-out photographs, correctly matched to the person in frame. Helmet and gloves still don't detect on the same imagery even at conf=0.05, which confirms this is a real limitation and not an artifact of the channel bug. Helmet was trained on rigid construction hard hats, which aren't standard ramp PPE — ramp crews wear caps and hearing protection instead. Gloves was already the weakest class in-domain (0.804 mAP50) and degrades further at the scale typical of wide-angle apron photography.
 
-**Correction to prior entry.** The 2026-08-12 entry described "cross-domain
-validation" without recording that it covered the `vest` class only, and that
-it was performed via a file-path code path not equivalent to the deployed
-application. Both qualifications are noted here for accuracy.
+**Correction to the prior entry.** The 2026-08-12 entry described "cross-domain validation" without noting that it covered vest only, and that it ran through a file-path code path not equivalent to the deployed app. Noting both here for the record.
 
-**Deployment verification.** Fix deployed to the public Streamlit application
-and confirmed on the held-out night ramp-marshalling photograph: `vest 0.92`,
-1 person detected, 0 violations, 100% compliance, with correct colour
-rendering in the annotated output. Deployed result now matches local
-inference exactly, closing the local-versus-deployed discrepancy that
-originally surfaced this defect.
+**Deployment verification.** The fix is live and confirmed against the held-out night photo: vest 0.92, one person detected, zero violations, 100% compliance, correct colour rendering. The deployed result now matches local inference, closing the gap that originally surfaced this bug.
 
-**Next.** (1) Re-scope `helmet` toward hearing-protection detection, which
-reflects actual ramp PPE requirements; (2) collect aviation-specific glove
-imagery at representative camera distances for Phase 2 fine-tuning;
-(3) assemble an annotated aviation validation set (target 100+ images) to
-support reportable precision/recall figures rather than single-image
-confidences; (4) begin FOD module scoping.
+**Next:** re-scope helmet toward hearing-protection detection, which better matches actual ramp PPE; collect aviation-specific glove imagery at realistic camera distances for Phase 2 fine-tuning; build an annotated aviation validation set (target 100+ images) so precision/recall can be reported instead of single-image confidences; begin FOD module scoping.
 
-## 2026-08-13 (continued) — False-positive finding, UI/UX redesign, and product naming
+## 2026-08-13 (continued) — False positive, UI redesign, product naming
 
-**False-positive finding.** A live test on a non-ramp, landside scene (two people at a terminal curb, no PPE context) produced a vest detection at 0.44 confidence -- a plain shirt misread as a vest. Cross-referenced against confirmed genuine detections across this project (consistently 0.88-0.92), this revealed a real precision gap in the 0.40-0.55 confidence band, not edge-case noise. Fix: default PPE confidence threshold raised from 0.40 to 0.60; the UI now flags any detection below 0.70 as "unverified" in the raw-detections table regardless of the active threshold, so a lowered slider can't silently present a weak detection as confirmed.
+**False positive.** A test on a non-ramp scene — two people at a terminal curb, no PPE context — returned a vest detection at 0.44 confidence on a plain shirt. Genuine detections elsewhere in this project have consistently landed at 0.88–0.92, so this wasn't edge-case noise; it pointed to a real precision gap in the 0.40–0.55 band. Fixed by raising the default PPE threshold from 0.40 to 0.60, and the UI now flags anything below 0.70 as "unverified" in the raw-detections table regardless of where the slider is set, so a lowered threshold can't quietly present a weak detection as confirmed.
 
-**UI/UX redesign.** The Streamlit interface went through three design iterations in response to direct feedback: (1) an initial dark "Glass Cockpit" aviation-instrumentation theme, (2) a correction after feedback that the phosphor-green-on-black look read as a hacker terminal rather than professional software, moved to a muted slate/sage palette, (3) a final BLADE-inspired light-first redesign with a working light/dark toggle, per an explicit design brief (hex palette, responsive split-panel layout, outdoor-glare accessibility requirements). Design rationale for each iteration is recorded in `docs/UI_UX_BLUEPRINT.md`. The METAR weather panel was relocated from the sidebar to a primary, sticky-positioned panel on desktop (stacking below the imagery panel on mobile) after user testing showed it was easy to miss in its original location.
+**UI redesign.** Went through three iterations based on direct feedback. First was a dark "Glass Cockpit" aviation-instrument theme. Feedback that the phosphor-green-on-black look read as a hacker terminal rather than professional software led to a second pass with a muted slate/sage palette. The final version is a BLADE-inspired light-first design with a working light/dark toggle, built against an explicit brief covering hex palette, responsive split-panel layout, and outdoor-glare accessibility. Rationale for each pass is in `docs/UI_UX_BLUEPRINT.md`. The METAR panel moved from the sidebar to a sticky primary panel on desktop (stacking below the imagery panel on mobile) after testing showed it was easy to miss where it started.
 
-**Product naming.** The PPE module was named "ASSIS -- Sentry," then checked against USPTO's public trademark search and found to conflict with an active, enforced registered mark (Functional Software, Inc.'s Sentry, a widely-used software product) and a second live mark ("Watchtower," closer in category overlap). A third candidate, "RampGuard," was verified via direct USPTO TESS search: a 1982 trademark application (Foxtronics, for an aircraft-monitoring device) was abandoned for failure to respond and never registered, with no subsequent filings found. "ASSIS -- RampGuard" was adopted as the module name; "ASSIS" remains the umbrella project name throughout, consistent with all previously filed documents.
+**Product naming.** Named the PPE module "ASSIS — Sentry," then checked it against USPTO's trademark database and found a conflict with an active, enforced mark (Functional Software Inc.'s Sentry) plus a second live mark, "Watchtower," with closer category overlap. Landed on "RampGuard" after a direct TESS search: a 1982 application for that name (Foxtronics, for an aircraft-monitoring device) was abandoned for failure to respond and never registered, with nothing since. Adopted "ASSIS — RampGuard" as the module name, keeping "ASSIS" as the umbrella project name throughout, consistent with everything already filed.
 
-**Next:** gloves retraining (scaffolded, not yet executed); continue TRB/ACRP outreach for institutional letter.
+**Next:** gloves retraining (scaffolded, not yet run); continue TRB/ACRP outreach for an institutional letter.
 
-## 2026-08-13 (continued) — Phase 2 (FOD) scoping, vendor classification, and prototype scaffold
+## 2026-08-13 (continued) — Phase 2 (FOD) scoping, vendor classification, prototype scaffold
 
-**Initial scoping.** Drafted `docs/FOD_PHASE2_PLAN.md`, identifying FOD detection as a substantially harder problem than PPE (small object size, low contrast, no anchor object, scarce public training data) and recommending a narrow first scope (large/obvious debris only).
+**Initial scoping.** Drafted `docs/FOD_PHASE2_PLAN.md`. FOD detection is a meaningfully harder problem than PPE — smaller objects, lower contrast, no anchor object to correlate against, and less public training data. Recommended starting narrow: large, obvious debris only.
 
-**Positioning correction.** A follow-up review found a material classification error in the initial competitive landscape: Stratech's iFerret and ArgosAI's A-FOD were incorrectly grouped with radar-based vendors (Xsight, QinetiQ, Rheinmetall). Both are dedicated electro-optical (camera-only) systems, commercially deployed at major hubs (Changi, Dubai, Heathrow, Miami, and others). This invalidated the original differentiator claim ("camera-based, unlike radar vendors"), since camera-only FOD detection is an established, deployed category, not a novel approach. The positioning was corrected to: existing-airport-camera, apron/ramp-focused FOD triage, integrated with the existing PPE ingestion pipeline -- differentiated by deployment context and infrastructure reuse, not by sensing modality. This correction was propagated to the white paper (Section 2.4 and Conclusion), which had independently made the same now-corrected claim.
+**Positioning correction.** A follow-up review turned up a real classification error in the competitive landscape section. Stratech's iFerret and ArgosAI's A-FOD had been grouped with the radar vendors (Xsight, QinetiQ, Rheinmetall). Both are actually dedicated electro-optical, camera-only systems, already deployed commercially at major hubs — Changi, Dubai, Heathrow, Miami, among others. That invalidated the original differentiator ("camera-based, unlike the radar vendors"), since camera-only FOD detection turns out to be an established category, not something novel. Repositioned around existing-camera, apron-focused FOD triage integrated with the PPE ingestion pipeline — the differentiator is deployment context and infrastructure reuse, not sensing modality. Propagated the same correction into the white paper (Section 2.4 and the conclusion), which had made the identical now-incorrect claim independently.
 
-**Dataset resolution.** The initial planning document's assumption that "no large public FOD dataset exists" was found to be incorrect. FOD-A (Munyer et al., 2021, IEEE ICMLA; arXiv:2110.03072) is a real, peer-reviewed, directly downloadable dataset -- 31 object categories, 30,000+ annotated instances, with light-level and weather sub-labels. Source confirmed via GitHub (`FOD-UNOmaha/FOD-data`) and a Kaggle mirror.
+**Dataset resolution.** The planning doc had assumed no large public FOD dataset existed. That was wrong. FOD-A (Munyer et al., 2021, IEEE ICMLA; arXiv:2110.03072) is real, peer-reviewed, and directly downloadable — 31 object categories, 30,000+ annotated instances, with light-level and weather sub-labels. Confirmed via GitHub (`FOD-UNOmaha/FOD-data`) and a Kaggle mirror.
 
-**Prototype scaffold.** Built `notebooks/ASSIS_FOD_Phase2_Prototype.py`, applying Phase 1's small-object lessons from the outset rather than rediscovering them: `yolov8s` (not nano) and `imgsz=960` (not 640) as starting parameters, based directly on the PPE gloves/helmet resolution finding. Not yet executed -- no FOD model has been trained or evaluated. This is a scoping and tooling milestone, not a results milestone.
+**Prototype scaffold.** Built `notebooks/ASSIS_FOD_Phase2_Prototype.py`, applying the Phase 1 small-object lessons from the start rather than rediscovering them — `yolov8s` instead of nano, `imgsz=960` instead of 640, both taken directly from the PPE gloves/helmet resolution finding. Nothing has been run yet; no FOD model has been trained or evaluated. This is a scoping and tooling step, not a results step.
 
-**Additional technical grounding.** Nine peer-reviewed FOD-detection papers (2021-2026) identified and cited, establishing YOLO-family feasibility for FOD detection in controlled research conditions -- explicitly noted as feasibility evidence, not a guarantee of performance in ASSIS's actual deployment context (existing CCTV, varied geometry and lighting).
+**Further grounding.** Identified and cited nine peer-reviewed FOD-detection papers from 2021–2026, establishing that YOLO-family models are viable for this task under controlled research conditions. Noted explicitly that this is feasibility evidence, not a guarantee of performance in ASSIS's actual deployment context — existing CCTV, variable geometry, variable lighting.
 
-**Next:** Phase 2a camera survey at CHS (per `docs/FOD_PHASE2_PLAN.md` Section 5.1) -- a prerequisite, low-cost step that determines whether existing apron cameras can support FOD detection at all before further model work is justified.
+**Next:** Phase 2a camera survey at CHS (per `docs/FOD_PHASE2_PLAN.md` §5.1) — a low-cost prerequisite that determines whether existing apron cameras can even resolve FOD-relevant object sizes before any model work is worth doing.
 
 ## 2026-08-13 (continued) — METAR conditional policy layer
 
-**METAR-conditional PPE policy.** Implemented `src/conditions.py`, which queries live METAR observations (NOAA Aviation Weather Center, no API key required) for a given airport and derives which PPE classes are currently required based on wind speed, temperature, and reported weather phenomena, rather than applying a fixed requirement set. Fails safe to the stricter requirement set if the observation is unavailable or older than 90 minutes. Verified live in the deployed app against a real airport code (KCHS), correctly returning wind, temperature, and raw METAR text, and correctly falling back to defaults when no station is set.
+**METAR-conditional PPE policy.** Built `src/conditions.py`, which pulls live METAR observations (NOAA Aviation Weather Center, no API key needed) for a given airport and derives which PPE classes are currently required from wind speed, temperature, and reported weather — rather than applying one fixed rule set. Falls back to the stricter requirement set if the observation is missing or older than 90 minutes. Verified live against a real airport code (KCHS): correctly returns wind, temperature, and raw METAR text, and correctly falls back to defaults when no station is set.
 
-**Summary of fixes this session (2026-08-13):**
-- BGR/RGB channel-order defect (silent vest-detection failure in deployment) — fixed, regression-tested
-- False-positive vest detection at 0.44 confidence on a non-ramp scene — default threshold raised to 0.60, weak detections flagged as unverified in the UI
-- Stale-cache risk on model reload — cache now keyed to weights file SHA-256
-- FOD Phase 2 vendor-classification error (Stratech/ArgosAI incorrectly grouped as radar vendors) — corrected across `docs/FOD_PHASE2_PLAN.md` and `docs/WHITE_PAPER_DRAFT.md`
+**Fixes shipped this session so far:**
+- BGR/RGB channel-order defect (silent vest-detection failure in deployment) — fixed and regression-tested
+- False-positive vest detection at 0.44 confidence — default threshold raised to 0.60, weak detections flagged unverified in the UI
+- Stale-cache risk on model reload — cache now keyed to the weights file's SHA-256
+- FOD vendor-classification error (Stratech/ArgosAI wrongly grouped as radar) — corrected in `docs/FOD_PHASE2_PLAN.md` and `docs/WHITE_PAPER_DRAFT.md`
 
-**Next phase.** Phase 2 (FOD detection) scoping is complete with a working prototype scaffold (`notebooks/ASSIS_FOD_Phase2_Prototype.py`) using the FOD-A dataset. Immediate next step is Phase 2a: a camera survey at CHS to determine whether existing apron cameras can resolve FOD-relevant object sizes before any model training is justified. Gloves retraining for Phase 1 remains scaffolded but not executed.
+**Next phase.** Phase 2 scoping is done, with a working prototype scaffold (`notebooks/ASSIS_FOD_Phase2_Prototype.py`) built around the FOD-A dataset. The immediate next step is the Phase 2a camera survey at CHS, checking whether existing apron cameras can resolve FOD-relevant object sizes at all. Gloves retraining for Phase 1 is still scaffolded but not run.
 
-## 2026-08-13 (continued) — Video mode, size-filter calibration, and inference-resolution finding (final PPE Phase 1 entry)
+## 2026-08-13 (continued) — Video mode, size-filter calibration, inference-resolution finding (final PPE Phase 1 entry)
 
-**Video and live-camera modes added.** Extended the app beyond single-photo upload: video file upload (sampled frame-by-frame, one frame every 2 seconds), and a local live-camera mode for physically-connected-camera testing (works only when run locally, not on the deployed cloud instance, since a remote server cannot access local hardware). Photo, video, and live modes were restructured from shared tabs into fully separate top-level modes after user feedback that shared UI made the three inputs feel intermingled rather than independent.
+**Video and live-camera modes.** Extended the app past single-photo upload: video files are now sampled frame-by-frame (one frame every two seconds), and a local live-camera mode supports testing with a physically connected camera — this only works when the app is run locally, since a remote cloud instance has no access to local hardware. After feedback that sharing tabs made photo, video, and live modes feel intermingled, restructured them into fully separate top-level modes.
 
-**Crowded-scene false-violation finding, and a self-correction on the fix.** Testing against a real wide-shot apron video (81.5s, 1920x1080, multiple people) initially produced 89 violations from 30 sampled frames — traced to the generic COCO person detector having no concept of "ramp worker" vs. "background bystander/passenger." A minimum-person-size filter was added to exclude small/distant detections (`MIN_PERSON_HEIGHT_FRACTION` in `src/utils.py`). The first calibration (0.15, i.e. people must occupy 15% of frame height) was too aggressive: retested against the same real video, it excluded every person in frame, including genuine vested ramp agents, producing 0 personnel detected — a worse failure than the problem it was meant to fix. Recalibrated to 0.03 after measuring actual box-height fractions in the real footage (~9-11% for legitimate ramp-distance workers); retested and confirmed correct. Diagnostic tooling was added directly to the UI (raw vs. filtered vs. deduplicated counts, plus an explicit checkbox to disable the filter) specifically so this class of miscalibration is self-diagnosable next time, rather than requiring another multi-round back-and-forth to isolate.
+**Crowded-scene false-violation finding, and a mistake in the first fix.** A real wide-shot apron video (81.5s, 1920x1080, several people) initially produced 89 violations across 30 sampled frames. The cause: the generic COCO person detector has no concept of a ramp worker versus a background bystander or passenger, so it was flagging everyone in frame. Added a minimum-person-size filter (`MIN_PERSON_HEIGHT_FRACTION` in `src/utils.py`) to exclude small, distant detections. The first value chosen — 0.15, meaning a person had to occupy 15% of frame height — was too aggressive. Retested against the same video and it excluded every person in frame, including genuinely vested workers, producing zero personnel detected. That's a worse failure than the one it was meant to fix. Recalibrated to 0.03 after measuring the actual box heights in the footage (roughly 9-11% for workers at realistic ramp distance), retested, and confirmed correct this time. Also added diagnostic tooling directly to the UI — raw versus filtered versus deduplicated counts, plus a checkbox to disable the filter entirely — so a miscalibration like this is self-diagnosable next time rather than needing another multi-round back-and-forth.
 
-**Root-cause finding: inference resolution silently defaulted to 640px on 1080p video.** After the size-filter fix, the same test video still returned zero vest detections despite a clearly visible, human-identifiable hi-vis vest in frame (confirmed by manually cropping and inspecting the actual frame). Direct testing across `imgsz` values on the identical frame:
+**Root cause: inference resolution was silently defaulting to 640px on 1080p video.** Even after the size-filter fix, the same video returned zero vest detections despite a clearly visible, human-identifiable hi-vis vest in frame — confirmed by cropping and inspecting the frame directly. Testing across `imgsz` values on that exact frame:
 
 | imgsz | Vest detection |
 |---|---|
-| 640 (previous silent default - never explicitly set anywhere in the app) | none |
+| 640 (the previous silent default - never explicitly set anywhere in the app) | none |
 | 960 | none |
 | 1280 | 0.849 confidence |
 | 1920 (native) | 0.862 confidence |
 
-This is the same small-object/resolution finding first identified for helmet detection in the 2026-08-12 entry, now confirmed to affect vest detection as well under realistic wide-shot/elevated-CCTV camera geometry - not just close-up photography. `INFERENCE_IMGSZ = 1280` is now set explicitly across all three pipelines (photo, video, live camera) in `app/streamlit_app.py`. Measured cost: ~3.6x slower per frame on CPU (165ms to 592ms), judged acceptable for single-photo and sampled-video use.
+This is the same small-object/resolution issue first found with helmet detection back in the 2026-08-12 entry, now confirmed to affect vest too under realistic wide-shot or elevated-CCTV geometry, not just close-up photos. `INFERENCE_IMGSZ = 1280` is now set explicitly across all three pipelines - photo, video, live camera. Cost: roughly 3.6x slower per frame on CPU (165ms to 592ms), which is acceptable for single photos and sampled video.
 
-**End-to-end verification on the real video.** With both fixes applied, the first 10 sampled frames of the test video produced 7 vest-compliant detections (versus 0 before either fix) out of 57 total person-detections, with 50 violations. The violation count itself is not yet independently verified as accurate - it may reflect genuine non-compliance, bystanders/passengers incorrectly counted as personnel (the crowded-scene limitation noted above, not yet resolved), or some combination; distinguishing these requires visual review of the flagged frames, which is a manual task, not a code fix.
+**End-to-end check on the real video.** With both fixes in place, the first 10 sampled frames produced 7 vest-compliant detections out of 57 total person-detections and 50 violations - versus zero compliant detections before either fix. Whether that violation count is itself accurate hasn't been independently checked yet. It could reflect genuine non-compliance, bystanders being miscounted as personnel (the crowded-scene issue noted above, still unresolved), or some mix of both. Telling those apart needs someone to look at the flagged frames; it isn't something a code change can settle on its own.
 
-**Status: this closes active Phase 1 (PPE) development for this session.** Known open items, unchanged from prior entries: gloves detection remains unresolved (scaffolded retraining not yet executed), helmet remains a taxonomy mismatch pending re-scoping to hearing protection, and a labeled aviation validation set is still required before any accuracy claim beyond single-image/single-video spot checks. Development focus moves to Phase 2 (FOD).
+**Where this leaves Phase 1 PPE work for this session.** Gloves detection is still unresolved - retraining is scaffolded but hasn't run. Helmet is still a taxonomy mismatch pending re-scoping to hearing protection. A labeled aviation validation set is still needed before any accuracy claim beyond single-image or single-video spot checks. Moving focus to Phase 2 from here.
 
-## 2026-08-13 (continued) — AttributeError crash traced to a module-name collision, not a stale deployment
+## 2026-08-13 (continued) — AttributeError traced to a module-name collision, not a stale deployment
 
-A live deployment repeatedly threw `AttributeError` on `ComplianceSummary.total_person_detections_unfiltered` even after the source file containing that field was confirmed pushed and the app rebooted — the same exact error, unchanged, across three consecutive fix-and-verify attempts. Root cause identified: `src/utils.py` was imported via `sys.path.insert(0, ...); from utils import ...`, which is fragile because Python checks `sys.modules` (its import cache) *before* consulting `sys.path`. `utils` is a generic module name; if any dependency in the chain (streamlit, ultralytics, torch, or a transitive dependency of any of them) had already registered a module under that same name, the `sys.path` insert would be silently ignored and the wrong module returned — with no error and no indication anything was wrong, only missing attributes at runtime.
+A live deployment kept throwing `AttributeError` on `ComplianceSummary.total_person_detections_unfiltered`, even after confirming the file containing that field was pushed and the app rebooted - same error, unchanged, across three separate fix-and-verify attempts. The actual cause: `src/utils.py` was being imported via `sys.path.insert(0, ...)` followed by `from utils import ...`, which is fragile because Python checks `sys.modules` before it ever looks at `sys.path`. `utils` is a generic name. If anything in the dependency chain - streamlit, ultralytics, torch, or something underneath any of them - had already registered a module under that same name, the `sys.path` insert would be silently ignored and the wrong module handed back, with no error and no indication anything was wrong. Just missing attributes at runtime.
 
-**Verification.** Rather than assert this diagnosis, it was proven directly: a fake `utils` module was deliberately planted in `sys.modules` before import (recreating the suspected collision), confirming the old import method would have been vulnerable to exactly this failure mode. The fix — loading `src/utils.py` and `src/conditions.py` by explicit file path via `importlib.util`, registered under collision-proof internal names (`assis_utils`, `assis_conditions`) — was then confirmed to load the correct module even with the fake module still planted, and confirmed to work normally with no regression in a clean environment.
+**Verification.** Rather than take the diagnosis on faith, it was tested directly: planted a fake `utils` module in `sys.modules` before import, recreating the suspected collision, and confirmed the old import method really would have been vulnerable to it. The fix - loading `src/utils.py` and `src/conditions.py` by explicit file path through `importlib.util`, registered under collision-proof names (`assis_utils`, `assis_conditions`) - was then confirmed to load the correct module even with the fake one still in place, and confirmed to behave normally with no regression in a clean environment.
 
-**Note on confidence in this diagnosis.** The fix is verified correct and robust against the specific collision scenario it targets. Whether module-name collision was *definitively* the original cause of the deployed error (versus, for example, a deployment sync issue that happened to resolve around the same time) was not independently confirmed against the live deployment's actual environment. The fix is retained regardless, since it eliminates an entire class of fragile-import failure by construction and has no downside.
+**How confident is this diagnosis, really.** The fix is verified sound against the specific collision it targets. Whether module-name collision was definitely what caused the original deployed error - as opposed to, say, a deployment sync issue that happened to resolve around the same time - wasn't independently confirmed against the actual live environment. The fix stands regardless, since it closes off an entire class of fragile-import failure by construction and costs nothing to keep.
 
-## 2026-08-13 (continued) — Crowded-scene vest confidence ceiling identified: a real detection-quality limit, not a tunable parameter
+## 2026-08-13 (continued) — Crowded-scene vest confidence ceiling: a real detection limit, not a tuning problem
 
-Follow-up testing surfaced two further findings, one cosmetic and one substantive, definitively closing out further PPE threshold-tuning for this session.
+Two more findings came out of follow-up testing, one cosmetic and one substantive, and together they close out further threshold-tuning on PPE for this session.
 
-**Cosmetic, not a correctness bug: overlapping duplicate vest boxes on a single person.** A separate short test video (lone worker, `1395092..._24fps.mp4`) showed three overlapping "vest" boxes (0.90/0.92/0.96) drawn on one person in the annotated image. Verified this did not affect the compliance decision - the frame correctly reported Personnel: 1, Violations: 0, COMPLIANT, since the correlation logic only requires one qualifying overlap, not a single box. A stricter NMS IoU (`PPE_NMS_IOU = 0.4`, down from ultralytics' default 0.7) was applied for visual cleanliness, verified against the known-good single-detection test case with no regression, but this was a display-clutter fix, not a logic fix - the underlying compliance output was already correct before it.
+**Cosmetic: overlapping duplicate vest boxes on one person.** A short test video of a lone worker showed three overlapping "vest" boxes (0.90, 0.92, 0.96) drawn on the same person. Checked whether this affected the actual compliance decision - it didn't. The frame correctly reported one person, zero violations, compliant, because the correlation logic only needs one qualifying overlap, not exactly one box. Applied a stricter NMS IoU (`PPE_NMS_IOU = 0.4`, down from ultralytics' default 0.7) purely for visual cleanliness, and confirmed no regression against the known-good single-detection case. Worth being clear that this was a display fix, not a logic fix - the underlying answer was already right.
 
-**Substantive: dense/wide-shot scenes push real vest confidence below the operational threshold, and no threshold value fixes this without reopening the false-positive problem.** Direct testing of the specific frame that produced a 5-violation, 0-compliant result (t=15.7s in the crowded gate video) found genuine vest signal present, but only at 0.451 confidence - inside the exact 0.40-0.55 confidence band already identified as unreliable (the 0.44 false-positive-on-a-plain-shirt finding from earlier this session). Lowering the confidence threshold to catch this detection would simultaneously reopen that false-positive risk; there is no threshold value that recovers dense-scene detections without also readmitting misclassifications. This is judged a genuine detection-quality ceiling for this deployment scenario (small, partially-occluded objects at wide-shot/elevated-camera distance), not a misconfiguration - already tested from four angles this session (inference resolution, minimum-size filtering, NMS, confidence threshold) with consistent results.
+**Substantive: dense, wide-shot scenes push real vest confidence below the working threshold, and there's no threshold that fixes this without reopening the earlier false-positive problem.** Dug into the specific frame that produced a 5-violation, zero-compliant result (t=15.7s in the crowded gate video) and found a genuine vest signal - but only at 0.451 confidence, squarely inside the same 0.40-0.55 band already flagged as unreliable from the earlier false-positive finding. Lowering the threshold enough to catch this would reopen that exact risk. There's no single threshold value that recovers dense-scene detections without also readmitting misclassifications elsewhere. This looks like a genuine detection-quality ceiling for this kind of scene - small, partially occluded objects at wide-shot or elevated-camera distance - rather than something misconfigured. Tested it from four separate angles this session (resolution, minimum-size filtering, NMS, confidence threshold), and all four point the same way.
 
-**Decision: stop tuning against this specific limitation for now.** Further threshold or parameter adjustment has reached diminishing returns and risks trading one documented problem for another. A real fix would require a different approach entirely - higher-resolution/closer camera coverage, tiled sub-region inference at higher effective resolution, or retraining specifically on dense small-object footage - each a genuine scoped project, not a configuration change. This is recorded as a characterized, honest Phase 1 boundary. Development moves to Phase 2 (FOD) as planned.
+**Decision: stop tuning against this for now.** Further threshold adjustment has hit diminishing returns and risks trading one documented problem for another. An actual fix would need a different approach - closer or higher-resolution camera coverage, tiled sub-region inference at higher effective resolution, or retraining specifically on dense small-object footage. Each of those is a real project, not a settings change. Recording this as a characterized, honest Phase 1 boundary and moving on to Phase 2.
 
 ---
 
 ## 2026-08-12 — 3-class retrain, dual-model violation detection, cross-domain validation
 
-- Simplified dataset from 5 classes to 3: removed `boots` and `human`
-- Retrained YOLOv8n (3 classes: gloves, helmet, vest), 50 epochs, Colab Pro T4 GPU
-- Results: mAP50 0.922, mAP50-95 0.725, Precision 0.922, Recall 0.864
+- Simplified the dataset from 5 classes to 3: dropped `boots` and `human`
+- Retrained YOLOv8n on 3 classes (gloves, helmet, vest), 50 epochs, Colab Pro T4
+- Results: mAP50 0.922, mAP50-95 0.725, precision 0.922, recall 0.864
 - Per-class mAP50: vest 0.985, helmet 0.978, gloves 0.804
-- Implemented dual-model violation detection (src/utils.py): correlates
-  person detections with PPE detections via bounding-box overlap for true
-  per-person compliance scoring
-- Cross-domain validation: tested on two real aviation ramp photographs
-  (never seen in training). Both correctly detected vest presence
-  (confidence 0.92 and 0.80) despite training on non-aviation imagery only
-  - **[Amended 2026-08-13]** This result covers the `vest` class only, and was
-    obtained by passing a file path to the model. It does not characterise
-    `helmet` or `gloves`, and was not equivalent to the deployed application's
-    code path, which carried the channel-order defect described in the
-    2026-08-13 entry.
-- License updated to AGPL-3.0; added NOTICE.md, CITATION.cff, CLA
+- Built dual-model violation detection (`src/utils.py`): correlates person detections with PPE detections via bounding-box overlap for true per-person compliance
+- Cross-domain check: tested on two real aviation ramp photos never seen in training. Both correctly showed vest presence (0.92 and 0.80 confidence) despite training on non-aviation imagery only
+  - **[Amended 2026-08-13]** This result covers vest only, and came from passing a file path to the model. It doesn't say anything about helmet or gloves, and wasn't equivalent to the deployed app's actual code path, which had the channel-order defect described in the 2026-08-13 entry.
+- Updated license to AGPL-3.0; added NOTICE.md, CITATION.cff, CLA
 - Next: Phase 2 (FOD detection) dataset scoping
 
 ---
 
-## 2026-08-10 — First model training completed: mAP50 = 0.933
+## 2026-08-10 — First model training run: mAP50 = 0.933
 
-- Dataset: PPE-Detection (Roboflow Universe), 5 classes (boots, gloves,
-  helmet, human, vest), 1,566 training images, 420 validation images
-- Training: YOLOv8n, 50 epochs, Google Colab T4 GPU
-- Results:
-  - mAP50: 0.933 (exceeds MVP target of ≥ 0.85)
-  - mAP50-95: 0.728
-  - Precision: 0.924
-  - Recall: 0.893
-- Per-class mAP50: vest 0.976, helmet 0.984, human 0.957, boots 0.933,
-  gloves 0.769
-- Tested inference on sample imagery; confirmed working detection pipeline
-- Trained weights (best.pt) downloaded and added to repo
-- Limitation observed: gloves class shows lower accuracy (0.769) than
-  other classes — likely due to smaller object size and dataset
-  representation; noted as a target for improvement in Phase 1.5
-- Next: test on aviation/ramp-context imagery to evaluate cross-domain
-  transfer; update compliance-scoring logic for full 5-class output;
-  populate white paper Results section with these metrics
+- Dataset: PPE-Detection (Roboflow Universe), 5 classes (boots, gloves, helmet, human, vest), 1,566 training images, 420 validation images
+- Training: YOLOv8n, 50 epochs, Google Colab T4
+- Results: mAP50 0.933 (past the 0.85 MVP target), mAP50-95 0.728, precision 0.924, recall 0.893
+- Per-class mAP50: vest 0.976, helmet 0.984, human 0.957, boots 0.933, gloves 0.769
+- Ran inference on sample imagery and confirmed the detection pipeline works
+- Downloaded the trained weights (`best.pt`) into the repo
+- Gloves is noticeably weaker (0.769) than the other classes - likely smaller object size and less representation in the dataset. Flagged as a Phase 1.5 target.
+- Next: test on aviation/ramp imagery for cross-domain transfer; update compliance-scoring logic for the full 5-class output; put these numbers into the white paper's Results section
 
 ---
 
-## 2026-08-09 — Repository published and organized on GitHub
+## 2026-08-09 — Repository published on GitHub
 
-- Created public GitHub repository: github.com/sundevilaviator/ASSIS-PPE-Detection
-- Uploaded full Phase 1 codebase and reorganized into proper folder structure
-  (app/, src/, docs/, notebooks/)
-- 14 commits reflecting iterative setup and corrections
-- Next: dataset selection (Roboflow) and first model training run
+- Created the public repo: github.com/sundevilaviator/ASSIS-PPE-Detection
+- Uploaded the full Phase 1 codebase and reorganized it into `app/`, `src/`, `docs/`, `notebooks/`
+- 14 commits covering iterative setup and corrections
+- Next: dataset selection (Roboflow) and first training run
 
 ---
 
 ## 2026-08-08 — Repository established; Phase 1 MVP scaffolded
 
-- Created public repository with complete Phase 1 codebase
-- Components: YOLOv8 training pipeline (Colab notebook + CLI script),
-  compliance-scoring module, Streamlit demonstration application
-- Defined v1 detection scope: high-visibility vest compliance
-  (`vest` / `no-vest`) for ramp operations
-- Documented dataset acquisition strategy (Roboflow Universe PPE datasets;
-  transfer learning from construction-domain imagery)
-- Documented regulatory alignment: FAA 14 CFR Part 139 (SMS),
-  TSA 49 CFR Part 1542, ICAO Annex 19, OSHA 29 CFR 1910.132
-- Next: dataset selection and first training run (target mAP50 ≥ 0.85)
+- Created the public repo with the complete Phase 1 codebase
+- Components: YOLOv8 training pipeline (Colab notebook plus CLI script), compliance-scoring module, Streamlit demo app
+- Defined v1 detection scope: high-visibility vest compliance (vest / no-vest) for ramp operations
+- Documented the dataset acquisition strategy - Roboflow Universe PPE datasets, transfer learning from construction-domain imagery
+- Documented regulatory alignment: FAA 14 CFR Part 139 (SMS), TSA 49 CFR Part 1542, ICAO Annex 19, OSHA 29 CFR 1910.132
+- Next: dataset selection and first training run (target mAP50 >= 0.85)
 
 <!-- Template for future entries:
 
