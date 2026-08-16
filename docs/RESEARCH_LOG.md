@@ -54,7 +54,7 @@ This explains a discrepancy that had looked inconsistent up to this point: Colab
 
 **Further grounding.** Identified and cited nine peer-reviewed FOD-detection papers from 2021–2026, establishing that YOLO-family models are viable for this task under controlled research conditions. Noted explicitly that this is feasibility evidence, not a guarantee of performance in ASSIS's actual deployment context — existing CCTV, variable geometry, variable lighting.
 
-**Next:** Phase 2a camera survey at CHS (per `docs/FOD_PHASE2_PLAN.md` §5.1) — a low-cost prerequisite that determines whether existing apron cameras can even resolve FOD-relevant object sizes before any model work is worth doing.
+**Next:** Phase 2a camera survey (per `docs/FOD_PHASE2_PLAN.md` §5.1) — a low-cost prerequisite that determines whether existing apron cameras can even resolve FOD-relevant object sizes before any model work is worth doing. Requires written authorization from a host airport's operations/security management before any camera access or on-site work; not yet sought.
 
 ## 2026-08-13 (continued) — METAR conditional policy layer
 
@@ -66,7 +66,7 @@ This explains a discrepancy that had looked inconsistent up to this point: Colab
 - Stale-cache risk on model reload — cache now keyed to the weights file's SHA-256
 - FOD vendor-classification error (Stratech/ArgosAI wrongly grouped as radar) — corrected in `docs/FOD_PHASE2_PLAN.md` and `docs/WHITE_PAPER_DRAFT.md`
 
-**Next phase.** Phase 2 scoping is done, with a working prototype scaffold (`notebooks/ASSIS_FOD_Phase2_Prototype.py`) built around the FOD-A dataset. The immediate next step is the Phase 2a camera survey at CHS, checking whether existing apron cameras can resolve FOD-relevant object sizes at all. Gloves retraining for Phase 1 is still scaffolded but not run.
+**Next phase.** Phase 2 scoping is done, with a working prototype scaffold (`notebooks/ASSIS_FOD_Phase2_Prototype.py`) built around the FOD-A dataset. Dataset acquisition, annotation conversion, and initial training can proceed without airport-specific access. The camera survey (Phase 2a) requires written authorization from a host airport before any camera access or on-site work — not yet sought or obtained — and is not currently blocking the dataset/model track. Gloves retraining for Phase 1 is still scaffolded but not run.
 
 ## 2026-08-13 (continued) — Video mode, size-filter calibration, inference-resolution finding (final PPE Phase 1 entry)
 
