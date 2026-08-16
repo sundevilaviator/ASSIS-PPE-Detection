@@ -8,6 +8,7 @@ Run with:
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -16,10 +17,36 @@ import streamlit as st
 from PIL import Image
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from utils import summarize_results, MIN_PERSON_HEIGHT_FRACTION  # noqa: E402
-from conditions import fetch_metar, determine_requirements, is_valid_icao  # noqa: E402
+
+def _load_local_module(module_name: str, file_path: Path):
+    """Load a local module by explicit file path, bypassing sys.modules and
+    sys.path entirely.
+
+    `utils` and `conditions` are generic module names. A plain
+    `sys.path.insert(0, ...); from utils import X` is fragile: Python checks
+    sys.modules BEFORE sys.path, so if any dependency (streamlit,
+    ultralytics, torch, or something in their dependency chain) has already
+    registered a module under the same name, the sys.path insert is silently
+    ignored and the wrong module is imported - with no error, just missing
+    attributes at runtime. This loads directly from the known file path,
+    registers it under a collision-proof name, and can never be shadowed.
+    """
+    spec = importlib.util.spec_from_file_location(f"assis_{module_name}", file_path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[f"assis_{module_name}"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_utils = _load_local_module("utils", REPO_ROOT / "src" / "utils.py")
+_conditions = _load_local_module("conditions", REPO_ROOT / "src" / "conditions.py")
+
+summarize_results = _utils.summarize_results
+MIN_PERSON_HEIGHT_FRACTION = _utils.MIN_PERSON_HEIGHT_FRACTION
+fetch_metar = _conditions.fetch_metar
+determine_requirements = _conditions.determine_requirements
+is_valid_icao = _conditions.is_valid_icao
 
 FINE_TUNED_WEIGHTS = REPO_ROOT / "models" / "best.pt"
 BASE_WEIGHTS = "yolov8n.pt"
@@ -36,6 +63,18 @@ BASE_WEIGHTS = "yolov8n.pt"
 # acceptable for single photos and sampled video frames, worth monitoring
 # if extended to real-time full-framerate use.
 INFERENCE_IMGSZ = 1280
+
+# NMS IoU threshold for the PPE model specifically. Ultralytics defaults to
+# 0.7, which is permissive enough to let multiple overlapping boxes of the
+# SAME class survive as separate detections on a single physical item (e.g.
+# three "vest" boxes at different confidences on one person's torso, all
+# clearing the confidence threshold without being merged/suppressed).
+# Lowered to 0.4 - stricter, more aggressive suppression of overlapping
+# same-class boxes. Verified this does not change output on known-good
+# single-detection test cases (see RESEARCH_LOG.md); has not yet been
+# verified against a real multi-duplicate case, since the video that
+# exhibited the problem was not available to test directly against.
+PPE_NMS_IOU = 0.4
 
 st.set_page_config(page_title="ASSIS — RampGuard", page_icon="✈", layout="wide")
 
@@ -364,7 +403,7 @@ def run_video_pipeline(uploaded_video, base_model, ppe_model, person_conf, ppe_c
         if frame_idx % frame_interval == 0:
             timestamp_s = frame_idx / fps if fps else 0.0
             person_results = base_model(frame_bgr, conf=person_conf, classes=[0], imgsz=INFERENCE_IMGSZ, verbose=False)[0]
-            ppe_results = ppe_model(frame_bgr, conf=ppe_conf, imgsz=INFERENCE_IMGSZ, verbose=False)[0]
+            ppe_results = ppe_model(frame_bgr, conf=ppe_conf, imgsz=INFERENCE_IMGSZ, iou=PPE_NMS_IOU, verbose=False)[0]
             filter_height = frame_bgr.shape[0] if apply_size_filter else None
             summary = summarize_results(person_results, ppe_results, requirements=requirements, frame_height=filter_height)
             frame_rgb = frame_bgr[:, :, ::-1]
@@ -549,7 +588,7 @@ def run_live_camera_pipeline(
 
             if run_detection_this_frame:
                 person_results = base_model(frame_bgr, conf=person_conf, classes=[0], imgsz=INFERENCE_IMGSZ, verbose=False)[0]
-                ppe_results = ppe_model(frame_bgr, conf=ppe_conf, imgsz=INFERENCE_IMGSZ, verbose=False)[0]
+                ppe_results = ppe_model(frame_bgr, conf=ppe_conf, imgsz=INFERENCE_IMGSZ, iou=PPE_NMS_IOU, verbose=False)[0]
                 last_summary = summarize_results(person_results, ppe_results, requirements=requirements, frame_height=frame_bgr.shape[0])
                 display_annotated = annotated_rgb(ppe_results)
             else:
@@ -885,7 +924,7 @@ def main() -> None:
 
         with st.spinner("Running person detection + PPE detection..."):
             person_results = base_model(image_bgr, conf=person_conf, classes=[0], imgsz=INFERENCE_IMGSZ)[0]
-            ppe_results = ppe_model(image_bgr, conf=ppe_conf, imgsz=INFERENCE_IMGSZ)[0]
+            ppe_results = ppe_model(image_bgr, conf=ppe_conf, imgsz=INFERENCE_IMGSZ, iou=PPE_NMS_IOU)[0]
 
         col1, col2 = st.columns(2)
         with col1:
