@@ -1,4 +1,8 @@
+[README.md](https://github.com/user-attachments/files/31117395/README.md)
+
 # ASSIS — RampGuard: AI-Integrated Airport Safety and Security Intelligence System — Phase 1 (PPE Compliance Detection)
+
+![Workflow Diagram](https://github.com/sundevilaviator/ASSIS-PPE-Detection/raw/main/workflow.svg)
 
 ---
 
@@ -24,17 +28,17 @@ ASSIS Phase 1, codenamed **RampGuard**, is a dual-model computer-vision system f
 
 ## Overview
 
-U.S. airport ramp and airside operations present a persistent, quantifiable source of occupational risk, with industry estimates placing ramp-accident costs at $10 billion annually worldwide. Personal Protective Equipment compliance, principally high-visibility vests, head protection, and hand protection; is a foundational OSHA-mandated control (29 CFR §1910.132) for mitigating this risk, yet compliance monitoring today remains almost entirely manual and intermittent.
+Ramp and airside operations at U.S. airports are a persistent, measurable source of occupational risk — industry estimates put worldwide ramp-accident costs at roughly $10 billion a year. High-visibility vests, head protection, and hand protection are OSHA-mandated controls for this risk (29 CFR §1910.132), but in practice, compliance monitoring is still mostly manual and intermittent.
 
-ASSIS Phase 1 addresses a narrow, tractable research question: can a YOLOv8 object-detection model, fine-tuned on freely available, non-aviation (construction-industry) PPE imagery, achieve deployable detection accuracy when evaluated against aviation ramp imagery, using only infrastructure airports already possess (existing CCTV)? This is treated as a transfer-learning problem. The underlying visual task is domain-general, while the deployment context (aviation ramp operations, SMS reporting integration, regulatory alignment) is domain-specific.
+ASSIS Phase 1 asks a narrower question: can a YOLOv8 model, fine-tuned on freely available construction-industry PPE imagery (not aviation-specific), be brought to a usable level of accuracy on aviation ramp footage, using only the CCTV infrastructure airports already have? Treated as a transfer-learning problem — the detection task itself is domain-general, but everything around it (SMS reporting integration, regulatory alignment, ramp-specific conditions) is domain-specific.
 
-This module is Phase 1 of the broader ASSIS platform, which is designed to expand to Foreign Object Debris (FOD) detection, fall/slip/trip identification, and credential-misuse alerting in subsequent phases (see [Roadmap](#roadmap)).
+This is Phase 1 of a broader platform, expected to expand into Foreign Object Debris detection, fall/slip/trip identification, and credential-misuse alerting in later phases (see [Roadmap](#roadmap)).
 
 ---
 
 ## Dual-Model Architecture
 
-Rather than training a dedicated "non-compliant person" class, for which labeled data is scarce — ASSIS determines compliance through a correlation approach:
+Rather than training a dedicated "non-compliant person" class — labeled data for that is scarce — ASSIS determines compliance through correlation:
 
 | Step | Component | Output |
 |---|---|---|
@@ -47,7 +51,7 @@ This produces a per-person compliance record (vest: yes/no, helmet: yes/no, glov
 
 ### Model Variant Selection
 
-Ultralytics distributes YOLOv8 in five parameter scales. The nano variant (YOLOv8n) was selected for the fine-tuned PPE detector on the basis of the following published trade-offs between model footprint and detection accuracy:
+Ultralytics ships YOLOv8 in five sizes. We picked the nano variant (YOLOv8n) for the fine-tuned PPE detector based on the published trade-offs between model size and accuracy:
 
 | Variant | Size (MB) | Baseline mAP (COCO, IoU 0.5:0.95) | Relative Inference Speed |
 |---|---|---|---|
@@ -57,15 +61,15 @@ Ultralytics distributes YOLOv8 in five parameter scales. The nano variant (YOLOv
 | YOLOv8l | 83.7 | 52.9 | Slower |
 | YOLOv8x | 130.5 | 53.9 | Slowest |
 
-For airport ramp deployment on commodity CCTV infrastructure, particularly at small-hub and non-hub facilities without dedicated GPU server hardware, inference latency and edge-deployability are weighted more heavily than the marginal accuracy gains offered by larger variants. YOLOv8n's validation performance on the ASSIS PPE task (mAP50 = 0.922; see [Results](#results)) substantially exceeds its baseline COCO accuracy, consistent with the reduced class complexity and domain specificity of the fine-tuning task relative to general-purpose 80-class object detection.
+For deployment on commodity CCTV hardware — especially at small-hub and non-hub airports without dedicated GPU servers — inference speed and ease of deployment matter more than the marginal accuracy gains from a bigger model. YOLOv8n's actual validation performance on the ASSIS PPE task (mAP50 = 0.922; see [Results](#results)) comes in well above its baseline COCO score, which makes sense given the fine-tuning task has far fewer classes and much more domain specificity than general 80-class object detection.
 
 ---
 
 ## Three-State Compliance & Conditional PPE Policy
 
-Two refinements were made after initial deployment testing surfaced their necessity (see `docs/RESEARCH_LOG.md`, 2026-08-13 entries):
+Two changes came out of what deployment testing surfaced (see `docs/RESEARCH_LOG.md`, 2026-08-13 entries):
 
-**Three-state per-item status.** Binary compliant/violation cannot express detector uncertainty. Each PPE class now resolves to one of:
+**Three states per item.** A simple compliant/violation split can't express when the detector itself isn't sure. Each PPE class now resolves to one of:
 
 | State | Meaning |
 |---|---|
@@ -75,18 +79,20 @@ Two refinements were made after initial deployment testing surfaced their necess
 
 Only `vest` currently gates the compliance decision. `helmet` and `gloves` are reported for transparency but are always `INDETERMINATE`, never `VIOLATION`, until they meet the promotion criterion documented in `docs/PPE_TAXONOMY.md`.
 
-**Conditional requirements via live METAR.** Not all PPE is required in all conditions — eye protection is situational (wind, blowing debris), gloves are situational (cold), while a hi-vis vest and footwear are unconditional. `src/conditions.py` fetches live METAR for a given airport (NOAA Aviation Weather Center, no API key required) and derives which classes are currently required, failing safe toward the stricter requirement whenever conditions are unknown or the observation is stale (>90 min). See `docs/PPE_TAXONOMY.md` §4 for the full policy specification.
+**Weather-conditional requirements, via live METAR.** Not every PPE class is needed in every condition — eye protection matters when it's windy or debris is blowing, gloves matter when it's cold, while a hi-vis vest and footwear are always required. `src/conditions.py` pulls live METAR for a given airport (NOAA Aviation Weather Center, no API key needed) and works out which classes are currently required, defaulting to the stricter set whenever conditions are unknown or the reading is more than 90 minutes old. Full policy spec in `docs/PPE_TAXONOMY.md` §4.
 
 ---
+
+## Deployment Targets
 
 | Target | Support | Notes |
 |---|---|---|
 | Existing airport CCTV + on-premises server (CPU or GPU) | Supported | Primary intended deployment context; no new capital hardware required |
 | Cloud-hosted inference (Streamlit Community Cloud) | Supported | Current live demo deployment |
 | Edge inference hardware (e.g., NVIDIA Jetson, Raspberry Pi + accelerator) | Planned | Target for Phase 2 field-validation, consistent with low-capital deployment objective for resource-constrained airports |
-| Real-time video pipeline (persistent multi-frame tracking) | Planned | Current implementation evaluated on static frames; see Limitations in accompanying technical paper |
+| Real-time video pipeline (persistent multi-frame tracking) | Planned | Video and live-camera modes now exist (interval-sampled, not continuous), but persistent cross-frame person tracking is not yet implemented — see Known Limitations |
 
-The system's low parameter count and sub-5ms per-frame inference latency (T4 GPU; see [Results](#results)) are intended to support deployment on modest, airport-owned infrastructure rather than requiring dedicated high-performance computing resources; a design constraint informed by the resource limitations documented at small-hub, non-hub, and general aviation facilities.
+The model's small footprint and fast per-frame inference (T4 GPU, sub-5ms; see [Results](#results)) are meant to make this deployable on the kind of modest, airport-owned infrastructure that's realistic at small-hub, non-hub, and general aviation facilities, not something that requires dedicated high-performance computing.
 
 ---
 
@@ -100,7 +106,7 @@ The codebase was developed and tested in Google Colab (T4 GPU) and is deployable
 python              3.10+
 ultralytics          8.4.118 (pinned)
 torch                2.11.x
-opencv-python-headless
+opencv-python-headless  # also powers video sampling and local live-camera capture (app/streamlit_app.py)
 numpy
 pillow
 requests             # METAR fetching (src/conditions.py)
@@ -223,38 +229,41 @@ Validation set performance (3-class configuration: gloves, helmet, vest), reprod
 | helmet | 0.978 | 320 |
 | gloves | 0.804 | 41 |
 
-**Cross-domain validation:** the trained model was evaluated on held-out, previously unseen aviation ramp photographs (excluded from training and validation). `vest` detections have consistently scored 0.88–0.92 confidence across multiple independent test images, correctly correlated to personnel through the full pipeline (local, Colab, and deployed environments verified to agree — see `docs/RESEARCH_LOG.md`, 2026-08-13). This supports the construction-to-aviation transfer-learning premise for the `vest` class specifically.
+**Cross-domain testing:** we ran the trained model against held-out aviation ramp photographs never seen in training or validation. Vest detections have consistently scored 0.88–0.92 confidence across several independent test images, correctly matched to the right person all the way through the pipeline (local, Colab, and the deployed app all agree — see `docs/RESEARCH_LOG.md`, 2026-08-13). That supports the construction-to-aviation transfer premise for vest specifically.
 
-**This is not yet a reportable accuracy metric.** The figures above are single-image confidence scores on a handful of held-out photographs, not precision/recall measured against a labeled aviation test set. Treat them as evidence the approach works, not as a validated accuracy rate — an annotated aviation validation set (target: 100+ images) is planned before any accuracy claim is made in a peer-reviewed context (see [Roadmap](#roadmap)).
+**This isn't a reportable accuracy number yet, and we want to be clear about that.** The figures above are single-image confidence scores on a handful of held-out photos, not precision/recall against a labeled aviation test set. Treat them as evidence the approach is worth pursuing, not a validated accuracy rate. An annotated aviation validation set (target: 100+ images) is planned before we'd make any accuracy claim in a peer-reviewed context (see [Roadmap](#roadmap)).
 
-Full methodology, results, and discussion are reported in the accompanying technical paper (see [Citation](#citation)).
+Full methodology and discussion are in the accompanying technical paper (see [Citation](#citation)).
 
 ---
 
 ## Known Limitations
 
-Documented plainly, since precision here matters more than optimism (see project context: this repository supports evidence submitted to USCIS).
+Laid out plainly here, since getting this right matters more than sounding polished — this repository also supports evidence submitted to USCIS.
 
-- **`gloves` does not transfer to aviation imagery.** Zero detections on aviation test photographs even at conf=0.01, despite 0.804 mAP50 in-domain (construction validation split). Root cause: small object scale at typical apron camera distance, and possibly insufficient in-domain examples. Not fixed by threshold tuning — requires retraining on aviation-domain imagery at higher inference resolution (see `notebooks/ASSIS_PPE_Retrain_SmallObjects.py`).
-- **`helmet` is a taxonomy mismatch, not just a detection gap.** The class was trained on rigid construction hard hats. Ramp personnel do not wear hard hats; they wear caps and hearing protection. The class currently fires on head-mounted equipment generally, which is closer to hearing protection than a helmet — re-scoping is planned (see `docs/PPE_TAXONOMY.md`).
-- **A confirmed false positive exists in the 0.40–0.55 confidence band** (a plain shirt in a non-ramp, landside scene misread as a vest at 0.44 confidence, against a genuine-detection baseline of 0.88–0.92). The application default threshold was raised to 0.60 in response, and detections below 0.70 are flagged as unverified in the UI. This is documented, not hidden, because it's evidence of active testing rigor rather than a reason to suppress the finding.
-- **Eye protection and footwear are not yet implemented as detection classes.** Camera-based verification of their *protective rating* (impact resistance, steel toe) is not physically possible regardless of model accuracy — see `docs/PPE_TAXONOMY.md` §2 for what optical detection can and cannot verify.
-- **Evaluated on static frames**, not video, and not under crowded/heavily-occluded conditions.
+- **Gloves doesn't transfer to aviation imagery.** Zero detections on aviation test photos even at conf=0.01, despite scoring 0.804 mAP50 in-domain on the construction validation split. Likely cause: the object is small at typical apron camera distance, and there may not be enough in-domain examples. Threshold tuning doesn't fix this — it needs retraining on aviation-domain imagery at higher inference resolution (see `notebooks/ASSIS_PPE_Retrain_SmallObjects.py`).
+- **Helmet is a taxonomy problem, not just a weak detector.** The class was trained on rigid construction hard hats, and ramp personnel don't wear those — they wear caps and hearing protection. Right now it fires on head-mounted equipment generally, which is really closer to hearing protection than a helmet. Re-scoping this is planned (see `docs/PPE_TAXONOMY.md`).
+- **A confirmed false positive sits in the 0.40–0.55 confidence band** — a plain shirt in a non-ramp landside scene got misread as a vest at 0.44 confidence, against a genuine-detection baseline of 0.88–0.92. Raised the default threshold to 0.60 in response, and anything below 0.70 now shows as unverified in the UI. Documenting this rather than quietly fixing it and moving on, because it's evidence of real testing, not something to hide.
+- **Eye protection and footwear aren't implemented as detection classes yet.** No camera can verify their actual protective rating — impact resistance, steel toe — regardless of how good the model gets. See `docs/PPE_TAXONOMY.md` §2 for what optical detection can and can't confirm.
+- **Video and live-camera modes exist and have been tested on real footage**, not just still photos. Uploaded video is sampled at a fixed interval and each sampled frame runs through the full detection pipeline; a local live-camera mode supports testing with a physically connected camera, though that only works when the app is running locally — a cloud deployment has no access to local hardware. This is interval-based batch processing of a file or feed, not continuous live CCTV ingestion — see `docs/FOD_PHASE2_PLAN.md` §4.1 for that distinction.
+- **Inference resolution turned out to matter for vest detection too, not just helmet/gloves.** The app had been running inference at a silent default of 640px regardless of the actual image or video resolution. Testing on real 1920×1080 ramp footage showed this caused complete vest-detection failure at normal wide-shot or elevated-camera distance. Raising it to `imgsz=1280` recovered detection (0 confidence to 0.849 on the identical footage). This is now set explicitly everywhere inference happens.
+- **Dense or crowded wide-shot scenes have a real detection-confidence ceiling — this isn't a setting we haven't found yet.** In one crowded apron scene, a vest that was clearly visible to a human eye only scored 0.451 confidence — inside the same unreliable 0.40–0.55 band from the false positive above, so lowering the threshold to catch it would just reopen that problem. We tested this from four different angles (inference resolution, minimum-person-size filtering, detection NMS, confidence threshold) and kept landing on the same answer. An actual fix needs different infrastructure — closer or higher-resolution camera coverage, tiled sub-region inference, or retraining specifically on dense small-object footage — not more configuration tuning. Full diagnostic history in `docs/RESEARCH_LOG.md`, 2026-08-13 entries.
+- **Crowded scenes also can't tell who's actually a worker.** A generic person detector has no idea whether it's looking at a ramp worker or a passenger walking by. A minimum-size filter (`MIN_PERSON_HEIGHT_FRACTION` in `src/utils.py`) cuts out distant background noise but doesn't solve this — a real fix needs a region-of-interest/exclusion-zone system (the same idea already specified for FOD in `docs/FOD_PHASE2_PLAN.md` §4.3) or an actual role classifier.
 
 ---
 
 ## Regulatory Alignment
 
-Ramp worker PPE requirements derive principally from OSHA general industry standards and carrier ground operations manuals, not from FAA airport-certification rules directly. Supports compliance monitoring consistent with:
+Ramp worker PPE requirements come mainly from OSHA general industry standards and carrier ground operations manuals, not from FAA airport-certification rules directly. Consistent with:
 
 - **OSHA 29 CFR §1910.132/.95/.136/.138/.133** — PPE, hearing protection, footwear, hand protection, eye protection
-- **FAA 14 CFR Part 139 Subpart E** — Safety Management Systems (airport certification; provides the SMS integration context, not the PPE mandate itself)
+- **FAA 14 CFR Part 139 Subpart E** — Safety Management Systems (airport certification; this is the SMS integration context, not where the PPE mandate comes from)
 - **TSA 49 CFR Part 1542** — Airport security programs
 - **ICAO Annex 19** — Safety risk management
 
-See `docs/PPE_TAXONOMY.md` for the full class-by-class regulatory basis and a note on which citations require verification against source text before use in any filing.
+`docs/PPE_TAXONOMY.md` has the full class-by-class regulatory basis and notes which citations still need to be checked against source text before anything gets filed.
 
-ASSIS is a research framework and decision-support layer. It does not replace regulatory obligations, human judgment, or existing safety programs, and does not verify PPE certification ratings (e.g., ANSI/ISEA retroreflective class, steel-toe rating) — only the observable presence of an item, which is reported as such. No airport CCTV footage, Sensitive Security Information, or SIDA-area imagery is used in this repository.
+ASSIS is a research framework and decision-support layer. It doesn't replace regulatory obligations, human judgment, or existing safety programs, and it can't verify PPE certification ratings — ANSI/ISEA retroreflective class, steel-toe rating — only whether an item is visibly present, which is reported as such. No airport CCTV footage, Sensitive Security Information, or SIDA-area imagery is used anywhere in this repository.
 
 ---
 
@@ -270,7 +279,7 @@ ASSIS is a research framework and decision-support layer. It does not replace re
 
 ### Under Consideration: Instance Segmentation
 
-The current architecture performs bounding-box (rectangular) detection for both person and PPE-item localization. Bounding-box overlap is an approximation of physical PPE-wearing status and can be sensitive to crowded scenes or partial occlusion, where a bystander's bounding box may incidentally overlap a nearby worker's PPE detection. Instance segmentation, pixel-level object masks rather than rectangular boxes, is under consideration as a precision enhancement to the correlation engine described above, and is achievable within the existing YOLOv8 framework (`yolov8n-seg` and comparable segmentation-variant checkpoints) without a change of underlying architecture or toolchain. This is noted as a candidate refinement for a subsequent phase rather than a limitation of the present results.
+The current architecture uses rectangular bounding boxes for both person and PPE-item localization. Overlap between rectangles is only an approximation of whether someone's actually wearing an item, and it's sensitive to crowded scenes or partial occlusion, where a bystander's box can incidentally overlap a nearby worker's PPE detection. Instance segmentation — pixel-level masks instead of boxes — is something we're considering as a precision upgrade to the correlation engine above, and it's achievable inside the existing YOLOv8 setup (`yolov8n-seg` and similar segmentation checkpoints) without changing the underlying architecture or toolchain. Flagging this as a candidate for a later phase, not a limitation of what's already been built.
 
 See `docs/PROJECT_ROADMAP.md`, `docs/RESEARCH_LOG.md`, `docs/PPE_TAXONOMY.md`, and `docs/UI_UX_BLUEPRINT.md` for detailed, dated progress and design rationale.
 
